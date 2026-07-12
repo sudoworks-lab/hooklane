@@ -1,0 +1,410 @@
+{
+  "_rules": [
+    "エージェントが変更してよいのは passes / verified_at / blocked フィールドのみ。",
+    "項目の追加・削除、description や steps の編集は、機能の欠落やバグの見逃しにつながるため許容されない。",
+    "passes を true にできるのは、steps をすべて実行して検証に通った場合のみ。",
+    "verified_at にはJSTの日時を ISO 8601 形式で記録する。"
+  ],
+  "_format": {
+    "id": "F001 のような一意ID",
+    "category": "functional | quality | docs のいずれか",
+    "description": "検証可能な1文(「〜できる」「〜が存在する」)",
+    "steps": ["検証の具体手順(コマンドや確認内容)"],
+    "passes": false,
+    "verified_at": null,
+    "blocked": false
+  },
+  "features": [
+    {
+      "id": "F001",
+      "category": "quality",
+      "description": "固定可能なPython toolchain、段階的なMake interface、repository skeletonが存在する",
+      "steps": [
+        "bash scripts/init.sh を実行し、KICKOFF直後から存在する検証と追加済みの検証がexit code 0で終了することを確認する",
+        "make doctor を実行し、Python、Git、Make、Docker接続、導入済みtoolとローカルresource前提を値を漏らさず確認できることを確認する",
+        "make smoke-fast を実行し、repository構造、設定parse、最小unit testがexit code 0で終了することを確認する",
+        "pyproject.toml、dependency lockfile、Makefile、src/hooklane/、tests/の責務別skeletonが存在し、dependencyとcontainer/tool versionをlatestなしで固定できることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-10T18:53:02+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F002",
+      "category": "functional",
+      "description": "POST /v1/eventsがJSON eventを検証し、202 Accepted、一意なevent ID、初期状態を返すことができる",
+      "steps": [
+        "make test-unit TESTS='tests/unit/test_event_model.py tests/unit/test_event_api.py' を実行し、event modelのvalidationとAPI contractが通ることを確認する",
+        "不正JSONおよび必須field不足のrequestが定義済み4xx responseになり、payload本文をresponseまたはlogへ複製しないことをtestで確認する",
+        "同じ内容を2回送信した場合もIdempotency-Keyなしでは異なるevent IDが返ることをtestで確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-10T21:21:47+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F003",
+      "category": "functional",
+      "description": "受け付けたeventをRedis Streamsへenqueueし、初期配送状態をRedisへ保存できる",
+      "steps": [
+        "make test-integration TESTS='tests/integration/test_enqueue.py' を実行し、Redisを使うenqueueとstatus保存が通ることを確認する",
+        "POST /v1/eventsの202 responseに含まれるevent IDでstream messageとstatus recordを対応付けられることを確認する",
+        "Redis書き込み失敗時に成功responseを返さず、Redis password、payload本文、credentialをlogへ出さないことをtestで確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T08:27:31+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F004",
+      "category": "functional",
+      "description": "workerがconsumer groupでeventを固定済みmock sinkへat-least-once配送し、成功時だけmessageをackできる",
+      "steps": [
+        "make test-integration TESTS='tests/integration/test_worker_delivery.py tests/integration/test_mock_sink.py' を実行する",
+        "正常配送後にstatusがdeliveredとなり、attempt countが更新され、streamのmessageがack済みになることを確認する",
+        "sink失敗時にはmessageがackされず、配送先がproject内mock sinkまたは明示allowlist外へ変更できないことを確認する",
+        "at-least-onceとevent IDによるdownstream重複排除contractをcode上の設定またはcontract testで確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T08:35:30+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F005",
+      "category": "functional",
+      "description": "GET /v1/events/{event_id}で配送状態と試行回数を確認できる",
+      "steps": [
+        "make test-integration TESTS='tests/integration/test_event_status.py' を実行する",
+        "queued、delivering、retry_scheduled、delivered、dead_letterの各状態とattempt countがAPI responseへ反映されることを確認する",
+        "存在しないevent IDが定義済み404 responseとなり、内部Redis keyを露出しないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T09:20:14+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F006",
+      "category": "functional",
+      "description": "Idempotency-Keyで同一eventの二重登録を抑止し、同一keyの異なる内容を競合として扱うことができる",
+      "steps": [
+        "make test-integration TESTS='tests/integration/test_idempotency.py' を実行する",
+        "同一keyかつ同一内容の並行requestが同じevent IDを返し、streamへ1件だけenqueueされることを確認する",
+        "同一keyかつ異なる内容が409 Conflictとなり、request fingerprintやpayload本文がlogへ出ないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T09:22:10+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F007",
+      "category": "functional",
+      "description": "retry可能な配送失敗を分類し、exponential backoffとjitterで再試行できる",
+      "steps": [
+        "make test-unit TESTS='tests/unit/test_retry_policy.py' を実行し、timeout、connection error、HTTP 5xx、HTTP 429の分類を確認する",
+        "固定seedまたは注入clockを使うtestでbackoff上限とjitter範囲を確認する",
+        "make test-integration TESTS='tests/integration/test_retry_delivery.py' を実行し、retry scheduleからeventが再配送されattempt countが増えることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T09:24:10+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F008",
+      "category": "functional",
+      "description": "非retry対象またはattempt上限に達したeventをdead-letterへ移動できる",
+      "steps": [
+        "make test-unit TESTS='tests/unit/test_dead_letter_policy.py' を実行し、非retry HTTP responseとattempt上限の判定を確認する",
+        "make test-integration TESTS='tests/integration/test_dead_letter.py' を実行し、dead-letter streamとevent statusが同じevent ID、最終error分類、attempt countを保持することを確認する",
+        "dead-letter移動後に元messageがackされ、それ以上自動配送されないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T07:55:33+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F009",
+      "category": "functional",
+      "description": "別workerが未ackのpending messageを回収し、配送中worker停止後もeventを失わず処理を継続できる",
+      "steps": [
+        "make test-integration TESTS='tests/integration/test_pending_recovery.py' を実行する",
+        "配送中workerを停止した後、claim idle threshold経過後に別consumerがpending messageを回収することを確認する",
+        "回収後にeventがdeliveredまたはpolicyに従ってdead-letterとなり、stream、status、sink receiptの対応からデータ消失がないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T09:41:32+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F010",
+      "category": "functional",
+      "description": "APIとworkerが役割別のstartup、readiness、liveness判定とgraceful shutdownを実行できる",
+      "steps": [
+        "make test-unit TESTS='tests/unit/test_health.py tests/unit/test_shutdown.py' を実行し、APIは初期化完了前にreadyにならず、workerはconsumer groupとretry schedulerの準備完了後だけreadyになることを確認する",
+        "startup初期化失敗を成功またはreadyとして扱わず、一時的なRedisまたはdownstream障害をlivenessの直接条件にしないことを確認する",
+        "make test-integration TESTS='tests/integration/test_graceful_shutdown.py' を実行し、SIGTERM後に新規受付を停止し、処理中messageをackまたはpendingの回収可能状態にして終了することを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T09:49:21+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F011",
+      "category": "quality",
+      "description": "固定versionのDockerfileとcontainer baseline hardening contract、追跡可能なplaceholder設定fileが存在する",
+      "steps": [
+        "make images-build を実行し、API、worker、mock sinkのimageをlatestなしの固定base imageからbuildできることを確認する",
+        "make image-contract を実行し、application imageのnon-root USER、不要package除外、secret非埋め込み、固定tag/digestと.dockerignoreを確認する",
+        "make container-policy-check を実行し、applicationだけでなくRedisや将来追加するPrometheus/Grafanaを含む全containerへhardening原則を適用し、機能上の例外は理由付きmachine-readable entryとして検出されることを確認する",
+        "人間承認後に.gitignoreの既存.env.*規則との競合を最小mergeで解消し、make env-example-check、git check-ignore -q .env.exampleのexit code 1、git ls-files --error-unmatch .env.exampleにより、値を含まないplaceholder-only .env.exampleが追跡可能であることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T09:58:08+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F012",
+      "category": "functional",
+      "description": "Docker ComposeでAPI、worker、Redis、mock sinkを起動し、local smokeとE2Eを実行できる",
+      "steps": [
+        "make compose-up を実行し、固定versionのAPI、worker、Redis、mock sinkの4 serviceがhealth checkを通ることを確認する",
+        "make smoke を実行し、event受付、非同期配送、状態参照がexit code 0で確認できることを確認する",
+        "make e2e-local を実行し、idempotency、retry、dead-letter、pending message回収がexit code 0で確認できることを確認する",
+        "make container-policy-check TARGET=composeを実行して4 serviceのbaseline hardeningまたは理由付き例外を確認し、make compose-downで後片付けできることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T10:06:18+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F013",
+      "category": "quality",
+      "description": "kind設定とHelm chart skeleton、values、schemaが存在し、deployせずに基本renderを検証できる",
+      "steps": [
+        "make kind-config-check を実行し、固定kind node image、port、resource前提を含むkind設定を確認する",
+        "make chart-validate-base を実行し、Helm chart metadata、values、values schema、4 workloadのtemplate skeletonがhelm lintとhelm templateを通ることを確認する",
+        "make chart-validate-baseがcluster作成、Helm install、workload起動を行わないことをcommand contract testで確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T22:45:59+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F014",
+      "category": "functional",
+      "description": "kind上へHelmでAPI、worker、Redis、mock sinkをdeployし、全workloadのReadyを確認できる",
+      "steps": [
+        "make cluster-up を実行し、固定versionのkind node imageでlocal clusterを作成できることを確認する",
+        "make deploy を実行し、HelmでAPI、worker、Redis、mock sinkの4 workloadをinstallできることを確認する",
+        "kubectl wait --for=condition=Ready pods --all --timeout=180sとmake chart-smokeを実行し、全workloadがReadyで基本event配送が通ることを確認する",
+        "rendered manifestとruntimeが外部cloud、SaaS、実credentialを必要としないことを確認し、make cluster-downで後片付けできることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T22:53:21+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F015",
+      "category": "quality",
+      "description": "全Kubernetes workloadにreplicas、resources、probes、securityContext、rolling strategy、PDB、graceful terminationの定義が存在する",
+      "steps": [
+        "make chart-validateを実行し、全rendered workloadのreplica数、resource requests/limits、役割別startup/readiness/liveness probes、terminationGracePeriodSeconds、rolling update strategy、PodDisruptionBudgetをschemaとcontract testで確認する",
+        "make container-policy-check TARGET=helmを実行し、API、worker、mock sink、Redisを含む全containerでrunAsNonRoot、allowPrivilegeEscalation false、全capability drop、readOnlyRootFilesystem、RuntimeDefault seccompを原則適用したことを確認する",
+        "機能上hardening原則を適用できないcontainer設定が、対象field、理由、限定範囲を持つmachine-readable exceptionとして文書化され、未登録例外をtestが失敗させることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-11T23:22:30+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F016",
+      "category": "functional",
+      "description": "event IDまたはrequest IDで追跡できる構造化logと主要処理のPrometheus metricsを出力できる",
+      "steps": [
+        "make test-unit TESTS='tests/unit/test_logging.py tests/unit/test_metrics.py' を実行する",
+        "request、enqueue、queue depth、delivery、retry、dead-letter、Redis errorのmetric名、label、counterまたはgaugeのcontractを確認する",
+        "make test-integration TESTS='tests/integration/test_observability_contract.py' を実行し、APIとworkerのlogをevent IDまたはrequest IDで対応付けられることを確認する",
+        "payload本文、credential、secret、Redis password、個人情報がlog、metric label、test artifactへ含まれないことをsentinel値によるnegative assertionで確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T00:27:40+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F017",
+      "category": "functional",
+      "description": "PrometheusとGrafanaで主要SLIを表示し、application metricsを確認できる",
+      "steps": [
+        "make observability-upとmake observability-smoke-baseを実行し、Prometheus target、主要metric query、Grafana provisioningとSLI panelを確認する",
+        "make image-contractを実行し、Prometheus、Grafanaと関連sidecarを含む全追加imageがexact versionまたはdigestで固定され、latest tagがないことを確認する",
+        "make container-policy-check TARGET=observabilityを実行し、Prometheus、Grafanaを含む全containerのhardeningまたは理由付きmachine-readable exceptionを確認する",
+        "make observability-downを実行し、起動したlocal resourceを後片付けできることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T00:52:18+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F018",
+      "category": "quality",
+      "description": "最低4件のalertから対応RunbookとSLI/SLOへ参照できる",
+      "steps": [
+        "make alert-rules-checkを実行し、delivery failure、retry増加、dead-letter発生、Redis errorまたはqueue滞留を含む最低4件のPrometheus alert ruleが有効であることを確認する",
+        "各alert annotationから存在するdocs/runbooks/配下のRunbookへ辿れ、metric名、SLI/SLO、検知、切り分け、暫定対応、復旧確認が相互参照されることを確認する",
+        "make observability-smokeを実行し、Prometheus target、Grafana dashboard、最低4 alert、全Runbook参照をまとめて確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T01:08:31+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F019",
+      "category": "quality",
+      "description": "lint、type check、unit test、integration testを同一のMake interfaceから実行できる",
+      "steps": [
+        "make lint を実行し、source、tests、support scriptのlintがexit code 0で終了することを確認する",
+        "make typecheck を実行し、applicationと検証用Python codeのtype checkがexit code 0で終了することを確認する",
+        "make test を実行し、unit testとRedisを使うintegration testが分離表示され、exit code 0で終了することを確認する",
+        "make verify を実行し、F019時点のlint、typecheck、testを失敗を隠さず集約できることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T02:49:28+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F020",
+      "category": "quality",
+      "description": "Gitleaks、OSV-Scanner、Trivyのsecurity gateを統一interfaceから実行できる",
+      "steps": [
+        "make security を実行し、Gitleaks、OSV-Scanner、Trivyがsecret、dependency、全project imageを検査することを確認する",
+        "文書化済みfail policyに従って未修正findingが非zeroとなり、secret findingが0件であることを確認する",
+        "make verify を実行し、F020時点のlint、typecheck、test、security gateを集約できることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T03:02:44+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F021",
+      "category": "quality",
+      "description": "Helm/schema validationと最小権限のbaseline CIをlocal contractで検証できる",
+      "steps": [
+        "make chart-validate を実行し、helm lint、全rendered manifest、values schema、Kubernetes schema validationがexit code 0で終了することを確認する",
+        "make verify を実行し、F021時点のlint、typecheck、test、security、chart validationを集約できることを確認する",
+        "make ci-contract を実行し、.github/workflows/ci.ymlが存在して同じMake gateを呼び、permissions最小化、未信頼PRでsecret不使用、third-party actionのcommit SHA固定を満たすことを確認する",
+        "kind E2E jobは未実装のmake e2e-kindをF021のpass条件にせず、F022で有効化する段階依存になっていることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T03:13:02+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F022",
+      "category": "quality",
+      "description": "kind上で正常配送、retry、worker停止後の回収、状態参照をE2E検証できる",
+      "steps": [
+        "make cluster-up deployを実行し、Helm releaseの全workloadがReadyになることを確認する",
+        "make e2e-kindを実行し、正常配送、retry、worker停止後のpending回収、状態参照がexit code 0で終了することを確認する",
+        "make ci-contractを実行し、F022で有効化したkind E2E jobがmake e2e-kindを呼ぶことを確認する",
+        "make cluster-downを実行し、作成したlocal kind resourceを後片付けできることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T03:33:44+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F023",
+      "category": "quality",
+      "description": "安全なrolling updateと意図的に失敗させたreleaseからのrollbackを検証できる",
+      "steps": [
+        "make cluster-up deployを実行し、更新前releaseとsmoke baselineを確認する",
+        "make rollout-smokeを実行し、rolling update中のavailabilityと新旧Podの遷移を確認する",
+        "意図的に失敗させたreleaseがReadyにならず、rollback後に直前revisionへ戻ってsmoke testが通ることを確認する",
+        "make cluster-downを実行し、local clusterを後片付けできることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T03:44:04+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F024",
+      "category": "quality",
+      "description": "downstream 5xxのincident drillで検知から復旧まで確認できる",
+      "steps": [
+        "make incident-downstream-5xxを実行し、mock sinkの5xxを決定的に再現できることを確認する",
+        "retry/delivery failure signal、event IDによる切り分け、暫定対応、sink復旧後の再配送を確認する",
+        "stream、status、sink receiptを照合し、eventのデータ消失がないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T09:20:40+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F025",
+      "category": "quality",
+      "description": "Redis停止のincident drillで検知から復旧まで確認できる",
+      "steps": [
+        "make incident-redis-outageを実行し、Redis停止と再開をlocal環境で再現できることを確認する",
+        "Redis error signal、API/worker health semantics、切り分け、受付抑止または暫定対応、Redis復旧後の処理再開を確認する",
+        "stream、status、sink receiptを照合し、確認可能な受付済みeventのデータ消失がないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T09:44:35+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F026",
+      "category": "quality",
+      "description": "配送中worker停止のincident drillでpending回収から復旧まで確認できる",
+      "steps": [
+        "make incident-worker-stopを実行し、配送中workerの停止を再現できることを確認する",
+        "pending/consumer signal、event IDによる切り分け、別workerによるclaimを暫定対応と復旧手順に沿って確認する",
+        "stream、status、sink receiptを照合し、重複可能性を許容しつつeventのデータ消失がないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T10:16:42+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F027",
+      "category": "quality",
+      "description": "3件のincident drillを集約実行し、障害記録とblameless postmortemを検証できる",
+      "steps": [
+        "make incident-smokeを実行し、F024-F026の3 commandが独立結果を表示してすべてexit code 0で終了することを確認する",
+        "docs/incidents/配下に3 scenarioの再現条件、signal、切り分け、暫定対応、復旧、データ消失判定を含む記録が存在することを確認する",
+        "blameless postmortem sampleに時系列、影響、根本原因、contributing factor、改善項目、対応Runbook参照が存在することを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T10:30:50+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F028",
+      "category": "docs",
+      "description": "architecture、ADR、SLO、operations、security、limitationsのcore文書が存在する",
+      "steps": [
+        "make docs-core-checkを実行し、ARCHITECTURE、docs/adr/配下の主要ADR、SLO、OPERATIONS、SECURITY、LIMITATIONSの存在と内部linkを確認する",
+        "core文書が実装boundary、at-least-once、health semantics、metric名、alert、Runbook、incident drill、security例外と一致することを確認する",
+        "LIMITATIONSに重複可能性、単一Redis、単一kind cluster、local測定範囲、未実装範囲、非production-readyを明記したことを確認する",
+        "make verifyを実行し、F028時点のlint、typecheck、test、security、chart validation、docs-core-checkを集約できることを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T11:06:56+09:00",
+      "blocked": false
+    },
+    {
+      "id": "F029",
+      "category": "docs",
+      "description": "READMEと3分DEMO手順が存在し、clean環境からsetup、deploy、demo、cleanupを再現できる",
+      "steps": [
+        "make docs-checkを実行し、README、DEMO、core文書、Runbook、incident記録の存在、内部link、記載command、成果物、metric名の整合性を確認する",
+        "demo contract checkで3分手順にarchitecture、主要failure mode、health semantics、verification results、constraintsの5項目が含まれることを機械確認する",
+        "READMEにat-least-once、downstreamのevent ID重複排除、local前提、非production-readyを明記したことを確認する",
+        "make verifyを実行し、最終構成のlint、typecheck、unit/integration test、security、Helm/schema validation、docs-checkがexit code 0で終了することを確認する",
+        "make clean-roomを実行し、一時directoryのlocal cloneからdoctor、verify、kind deploy、3分demo、cleanupを完了し、git statusとartifact検査でsecret、log、cache、history、個人情報、業務情報、不要なgenerated artifactが残らないことを確認する"
+      ],
+      "passes": true,
+      "verified_at": "2026-07-12T12:48:05+09:00",
+      "blocked": false
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hooklane.fullname" . }}-grafana-provisioning
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    deleteDatasources: []
+    datasources:
+      - name: Hooklane Prometheus
+        type: prometheus
+        uid: hooklane-prometheus
+        access: proxy
+        url: http://{{ include "hooklane.fullname" . }}-prometheus:{{ .Values.observability.prometheus.service.port }}
+        isDefault: true
+        editable: false
+        jsonData:
+          httpMethod: POST
+          manageAlerts: false
+  dashboard-provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: Hooklane
+        orgId: 1
+        folder: Hooklane
+        folderUid: hooklane
+        type: file
+        disableDeletion: true
+        editable: false
+        updateIntervalSeconds: 10
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hooklane.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  hooklane-overview.json: |
+{{ .Files.Get "files/grafana/dashboards/hooklane-overview.json" | indent 4 }}
+{{- end }}

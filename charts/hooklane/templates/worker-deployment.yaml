@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hooklane.fullname" . }}-worker
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.worker.strategy.maxUnavailable }}
+      maxSurge: {{ .Values.worker.strategy.maxSurge }}
+  selector:
+    matchLabels:
+      {{- include "hooklane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "hooklane.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | quote }}
+      {{- if .Values.observability.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: {{ .Values.observability.metricsPort | quote }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "hooklane.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: {{ include "hooklane.image" .Values.worker.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "hooklane.fullname" . }}-config
+          env:
+            - name: HOOKLANE_CONSUMER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.observability.metricsPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- if .Values.worker.probes.startup.enabled }}
+          startupProbe:
+            exec:
+              command:
+                {{- toYaml .Values.worker.probes.startup.command | nindent 16 }}
+            periodSeconds: {{ .Values.worker.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.worker.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.worker.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.worker.probes.readiness.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                {{- toYaml .Values.worker.probes.readiness.command | nindent 16 }}
+            periodSeconds: {{ .Values.worker.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.worker.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.worker.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.worker.probes.liveness.enabled }}
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: {{ .Values.worker.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.worker.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.worker.probes.liveness.failureThreshold }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi

@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hooklane.fullname" . }}-mock-sink
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-sink
+spec:
+  replicas: {{ .Values.mockSink.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.mockSink.strategy.maxUnavailable }}
+      maxSurge: {{ .Values.mockSink.strategy.maxSurge }}
+  selector:
+    matchLabels:
+      {{- include "hooklane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mock-sink
+  template:
+    metadata:
+      labels:
+        {{- include "hooklane.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mock-sink
+      {{- if .Values.observability.enabled }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "hooklane.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ .Values.mockSink.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mock-sink
+          image: {{ include "hooklane.image" .Values.mockSink.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: HOOKLANE_MOCK_SINK_MODE
+              value: {{ .Values.mockSink.failureMode | quote }}
+            - name: HOOKLANE_MOCK_SINK_DELAY_SECONDS
+              value: {{ .Values.mockSink.delaySeconds | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.mockSink.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          {{- if .Values.mockSink.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.mockSink.probes.readiness.path }}
+              port: http
+            periodSeconds: {{ .Values.mockSink.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.mockSink.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.mockSink.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.mockSink.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.mockSink.probes.liveness.path }}
+              port: http
+            periodSeconds: {{ .Values.mockSink.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.mockSink.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.mockSink.probes.liveness.failureThreshold }}
+          {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi

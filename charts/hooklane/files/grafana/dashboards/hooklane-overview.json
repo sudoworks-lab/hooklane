@@ -1,0 +1,227 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Hooklane SLO design targets",
+      "tooltip": "Repository-local SLI/SLO definitions and measurement limitations",
+      "type": "link",
+      "url": "docs/SLO.md"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Hooklane alert Runbooks",
+      "tooltip": "Repository-local alert response procedures",
+      "type": "link",
+      "url": "docs/runbooks/"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "API event acceptance request rate.",
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [{"expr": "sum(rate(hooklane_http_requests_total{service=\"api\",route=\"/v1/events\",method=\"POST\"}[5m]))", "refId": "A"}],
+      "title": "API request rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "API 4xx and 5xx request rate by bounded status class.",
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "targets": [{"expr": "sum by (status_class) (rate(hooklane_http_requests_total{service=\"api\",route=\"/v1/events\",status_class=~\"4xx|5xx\"}[5m]))", "legendFormat": "{{status_class}}", "refId": "A"}],
+      "title": "API error rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "SLI: valid event enqueue success divided by all enqueue outcomes.",
+      "fieldConfig": {"defaults": {"max": 1, "min": 0, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "targets": [{"expr": "sum(rate(hooklane_enqueue_total{service=\"api\",outcome=\"success\"}[5m])) / clamp_min(sum(rate(hooklane_enqueue_total{service=\"api\"}[5m])), 0.000000001)", "refId": "A"}],
+      "title": "API acceptance success rate",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Ready API application instances discovered by Prometheus.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "targets": [{"expr": "sum(hooklane_service_ready{service=\"api\"})", "refId": "A"}],
+      "title": "Available API replicas",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "API p50 request latency.",
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "id": 5,
+      "targets": [{"expr": "histogram_quantile(0.50, sum by (le) (rate(hooklane_http_request_duration_seconds_bucket{service=\"api\",route=\"/v1/events\",method=\"POST\"}[5m])))", "refId": "A"}],
+      "title": "API p50 latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "SLI: API p95 request latency.",
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "id": 6,
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(hooklane_http_request_duration_seconds_bucket{service=\"api\",route=\"/v1/events\",method=\"POST\"}[5m])))", "refId": "A"}],
+      "title": "API p95 latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Enqueue success and failure rate.",
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
+      "id": 7,
+      "targets": [{"expr": "sum by (outcome) (rate(hooklane_enqueue_total{service=\"api\"}[5m]))", "legendFormat": "{{outcome}}", "refId": "A"}],
+      "title": "Enqueue success / failure",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "SLI: unread and pending queue backlog.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+      "id": 8,
+      "targets": [{"expr": "max(hooklane_queue_depth{service=~\"api|worker\"})", "refId": "A"}],
+      "title": "Queue depth",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "SLI: age of the oldest unread or pending event.",
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 16},
+      "id": 9,
+      "targets": [{"expr": "max(hooklane_oldest_queued_event_age_seconds{service=~\"api|worker\"})", "refId": "A"}],
+      "title": "Oldest queued event age",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Delivery outcome rate, including retry and terminal failure states.",
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 16},
+      "id": 10,
+      "targets": [{"expr": "sum by (outcome) (rate(hooklane_delivery_outcomes_total{service=\"worker\"}[5m]))", "legendFormat": "{{outcome}}", "refId": "A"}],
+      "title": "Delivery success / failure",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Worker delivery attempt p95 latency.",
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 16},
+      "id": 11,
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(hooklane_delivery_duration_seconds_bucket{service=\"worker\"}[5m])))", "refId": "A"}],
+      "title": "Delivery p95 latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "SLI: delivered events completed within 60 seconds.",
+      "fieldConfig": {"defaults": {"max": 1, "min": 0, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 16},
+      "id": 12,
+      "targets": [{"expr": "sum(rate(hooklane_delivery_completion_total{service=\"worker\",outcome=\"within_60_seconds\"}[5m])) / clamp_min(sum(rate(hooklane_delivery_completion_total{service=\"worker\"}[5m])), 0.000000001)", "refId": "A"}],
+      "title": "Delivery within 60 seconds",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Retries scheduled in the last five minutes.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 24},
+      "id": 13,
+      "targets": [{"expr": "sum(increase(hooklane_retry_scheduled_total{service=\"worker\"}[5m]))", "refId": "A"}],
+      "title": "Retry count",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Dead-letter events observed in the last five minutes.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 24},
+      "id": 14,
+      "targets": [{"expr": "sum(increase(hooklane_dead_letter_total{service=\"worker\"}[5m]))", "refId": "A"}],
+      "title": "Dead-letter count",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Current Redis consumer-group pending message count.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 24},
+      "id": 15,
+      "targets": [{"expr": "max(hooklane_pending_messages{service=~\"api|worker\"})", "refId": "A"}],
+      "title": "Pending message count",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Redis operation failures in the last five minutes.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 24},
+      "id": 16,
+      "targets": [{"expr": "sum(increase(hooklane_redis_operation_failures_total[5m]))", "refId": "A"}],
+      "title": "Redis error",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "Worker delivery operations currently in flight.",
+      "fieldConfig": {"defaults": {"decimals": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 32},
+      "id": 17,
+      "targets": [{"expr": "sum(hooklane_worker_in_flight{service=\"worker\"})", "refId": "A"}],
+      "title": "Worker in-flight",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "hooklane-prometheus"},
+      "description": "SLI: successful deliveries divided by classified delivery outcomes.",
+      "fieldConfig": {"defaults": {"max": 1, "min": 0, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 32},
+      "id": 18,
+      "targets": [{"expr": "sum(rate(hooklane_delivery_outcomes_total{service=\"worker\",outcome=\"success\"}[5m])) / clamp_min(sum(rate(hooklane_delivery_outcomes_total{service=\"worker\"}[5m])), 0.000000001)", "refId": "A"}],
+      "title": "Delivery success rate",
+      "type": "gauge"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["hooklane", "sli", "local-kind"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Hooklane SLI and Operations",
+  "uid": "hooklane-overview",
+  "version": 1,
+  "weekStart": ""
+}

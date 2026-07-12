@@ -1,0 +1,101 @@
+groups:
+  - name: hooklane-operational-alerts
+    interval: 5s
+    rules:
+      - alert: HooklaneApiHighErrorRate
+        expr: |
+          (
+            sum(rate(hooklane_http_requests_total{service="api",route="/v1/events",status_class="5xx"}[30s]))
+            /
+            clamp_min(sum(rate(hooklane_http_requests_total{service="api",route="/v1/events"}[30s])), 0.000000001)
+          ) > 0.05
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane API 5xx rate is above 5 percent
+          impact: Valid event acceptance may be unavailable and the API availability error budget may be consumed.
+          runbook: docs/runbooks/HooklaneApiHighErrorRate.md
+          dashboard: Hooklane SLI and Operations / API error rate
+          slo_sli: docs/SLO.md#api受付可用性
+          severity: critical
+      - alert: HooklaneQueueBacklogGrowing
+        expr: |
+          max(hooklane_queue_depth{service=~"api|worker"}) > 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: Hooklane queue backlog remains above zero
+          impact: Accepted events are waiting or pending and delivery timeliness may degrade.
+          runbook: docs/runbooks/HooklaneQueueBacklogGrowing.md
+          dashboard: Hooklane SLI and Operations / Queue depth
+          slo_sli: docs/SLO.md#queue-backlogとoldest-event-age
+          severity: warning
+      - alert: HooklaneOldestEventTooOld
+        expr: |
+          max(hooklane_oldest_queued_event_age_seconds{service=~"api|worker"}) > 20
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane oldest queued event is over 20 seconds old
+          impact: The 60-second delivery timeliness target is at risk.
+          runbook: docs/runbooks/HooklaneOldestEventTooOld.md
+          dashboard: Hooklane SLI and Operations / Oldest queued event age
+          slo_sli: docs/SLO.md#配送適時性
+          severity: critical
+      - alert: HooklaneDeliveryFailureRateHigh
+        expr: |
+          (
+            sum(rate(hooklane_delivery_outcomes_total{service="worker",outcome=~"retry_scheduled|dead_lettered|pending|failure"}[30s]))
+            /
+            clamp_min(sum(rate(hooklane_delivery_outcomes_total{service="worker"}[30s])), 0.000000001)
+          ) > 0.20
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane classified delivery failure rate is above 20 percent
+          impact: Downstream delivery is failing and the delivery success target may be consumed.
+          runbook: docs/runbooks/HooklaneDeliveryFailureRateHigh.md
+          dashboard: Hooklane SLI and Operations / Delivery success / failure
+          slo_sli: docs/SLO.md#配送成功率
+          severity: critical
+      - alert: HooklaneRetryRateHigh
+        expr: |
+          sum(increase(hooklane_retry_scheduled_total{service="worker"}[30s])) > 0
+        for: 5s
+        labels:
+          severity: warning
+        annotations:
+          summary: Hooklane scheduled one or more retries in 30 seconds
+          impact: Downstream instability is delaying event delivery.
+          runbook: docs/runbooks/HooklaneRetryRateHigh.md
+          dashboard: Hooklane SLI and Operations / Retry count
+          slo_sli: docs/SLO.md#配送適時性
+          severity: warning
+      - alert: HooklaneDeadLetterIncreasing
+        expr: |
+          sum(increase(hooklane_dead_letter_total{service="worker"}[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane moved one or more events to dead-letter in five minutes
+          impact: One or more accepted events exhausted delivery policy and need operator review.
+          runbook: docs/runbooks/HooklaneDeadLetterIncreasing.md
+          dashboard: Hooklane SLI and Operations / Dead-letter count
+          slo_sli: docs/SLO.md#配送成功率
+          severity: critical
+      - alert: HooklaneRedisOperationFailures
+        expr: |
+          sum(increase(hooklane_redis_operation_failures_total[30s])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane observed a Redis operation failure
+          impact: API acceptance, queue processing, or status reads may be unavailable.
+          runbook: docs/runbooks/HooklaneRedisOperationFailures.md
+          dashboard: Hooklane SLI and Operations / Redis error
+          slo_sli: docs/SLO.md#api受付可用性
+          severity: critical

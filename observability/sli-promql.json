@@ -1,0 +1,8 @@
+{
+  "api_acceptance_success_rate": "sum(rate(hooklane_enqueue_total{service=\"api\",outcome=\"success\"}[5m])) / clamp_min(sum(rate(hooklane_enqueue_total{service=\"api\"}[5m])), 0.000000001)",
+  "api_latency_p95": "histogram_quantile(0.95, sum by (le) (rate(hooklane_http_request_duration_seconds_bucket{service=\"api\",route=\"/v1/events\",method=\"POST\"}[5m])))",
+  "delivery_success_rate": "sum(rate(hooklane_delivery_outcomes_total{service=\"worker\",outcome=\"success\"}[5m])) / clamp_min(sum(rate(hooklane_delivery_outcomes_total{service=\"worker\"}[5m])), 0.000000001)",
+  "delivery_within_60_seconds": "sum(rate(hooklane_delivery_completion_total{service=\"worker\",outcome=\"within_60_seconds\"}[5m])) / clamp_min(sum(rate(hooklane_delivery_completion_total{service=\"worker\"}[5m])), 0.000000001)",
+  "queue_backlog": "max(hooklane_queue_depth{service=~\"api|worker\"})",
+  "oldest_event_age": "max(hooklane_oldest_queued_event_age_seconds{service=~\"api|worker\"})"
+}

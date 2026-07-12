@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hooklane.fullname" . }}-config
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+data:
+  HOOKLANE_REDIS_URL: {{ .Values.config.redisURL | quote }}
+  HOOKLANE_RETRY_MAXIMUM_ATTEMPTS: {{ .Values.retry.maximumAttempts | quote }}
+  HOOKLANE_PENDING_IDLE_MILLISECONDS: {{ .Values.retry.pendingIdleMilliseconds | quote }}
+  HOOKLANE_OBSERVABILITY_ENABLED: {{ .Values.observability.enabled | quote }}
+  HOOKLANE_METRICS_PORT: {{ .Values.observability.metricsPort | quote }}

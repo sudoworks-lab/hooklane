@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "fail_closed": true,
+  "tools": {
+    "gitleaks": {
+      "version": "8.30.1",
+      "scope": ["git-history", "working-tree"],
+      "redact_percent": 100
+    },
+    "osv-scanner": {
+      "version": "2.4.0",
+      "lockfile": "requirements.lock",
+      "ecosystem_hint": "requirements.txt",
+      "fail_on_any_vulnerability": true
+    },
+    "trivy": {
+      "version": "0.72.0",
+      "scanners": ["vuln"],
+      "fail_severities": ["HIGH", "CRITICAL"],
+      "filesystem_pattern": "pip:requirements\\.lock",
+      "images": [
+        "hooklane-api:0.1.0",
+        "hooklane-worker:0.1.0",
+        "hooklane-mock-sink:0.1.0"
+      ]
+    }
+  },
+  "exceptions": []
+}

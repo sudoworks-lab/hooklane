@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "defaults": {
+    "run_as_non_root": true,
+    "allow_privilege_escalation": false,
+    "drop_capabilities": [
+      "ALL"
+    ],
+    "read_only_root_filesystem": true,
+    "seccomp_profile": "RuntimeDefault",
+    "writable_paths": [
+      "/tmp"
+    ]
+  },
+  "services": {
+    "api": {
+      "image": "hooklane-api:0.1.0",
+      "lifecycle": "implemented"
+    },
+    "worker": {
+      "image": "hooklane-worker:0.1.0",
+      "lifecycle": "implemented"
+    },
+    "mock-sink": {
+      "image": "hooklane-mock-sink:0.1.0",
+      "lifecycle": "implemented"
+    },
+    "redis": {
+      "image": "redis:8.0.1-alpine@sha256:62b5498c91778f738f0efbf0a6fd5b434011235a3e7b5f2ed4a2c0c63bb1c786",
+      "lifecycle": "implemented"
+    },
+    "prometheus": {
+      "image": "prom/prometheus:v3.12.0-distroless@sha256:f39df5334dee301b885f77e0ff1159f5d8a43bf9db518f885544594799a1e3c2",
+      "lifecycle": "implemented"
+    },
+    "grafana": {
+      "image": "grafana/grafana:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2",
+      "lifecycle": "implemented"
+    }
+  },
+  "exceptions": [
+    {
+      "service": "redis",
+      "field": "image_user",
+      "scope": "pinned upstream image metadata",
+      "reason": "The upstream image starts through its root-owned entrypoint; each runtime definition sets numeric UID and GID explicitly."
+    },
+    {
+      "service": "prometheus",
+      "field": "writable_paths",
+      "scope": "ephemeral /prometheus TSDB and /tmp only",
+      "reason": "Prometheus requires writable local TSDB storage; kind validation uses a size-limited emptyDir and retains no data after cluster cleanup."
+    },
+    {
+      "service": "prometheus",
+      "field": "service_account_token_projection",
+      "scope": "namespace-scoped read-only Pod discovery",
+      "reason": "Prometheus mounts a short-lived projected token explicitly so it can list and watch annotated Pods through a namespace Role; automatic token mounting remains disabled."
+    },
+    {
+      "service": "grafana",
+      "field": "writable_paths",
+      "scope": "ephemeral /var/lib/grafana and /tmp only",
+      "reason": "Grafana requires writable SQLite, plugin, and log paths; kind validation uses size-limited emptyDir volumes and retains no data after cleanup."
+    },
+    {
+      "service": "grafana",
+      "field": "anonymous_access",
+      "scope": "cluster-local Viewer role with no published Service port",
+      "reason": "The local reproducible dashboard uses credential-free Viewer access; login, user creation, and the initial admin account are disabled."
+    },
+    {
+      "service": "worker",
+      "field": "pdb_availability",
+      "scope": "single-replica local kind deployment",
+      "reason": "maxUnavailable 1 permits voluntary disruption and does not claim continuous worker availability."
+    },
+    {
+      "service": "mock-sink",
+      "field": "pdb_availability",
+      "scope": "single-replica local demo sink",
+      "reason": "maxUnavailable 1 permits voluntary disruption because the sink is a local failure-injection dependency, not a highly available service."
+    },
+    {
+      "service": "redis",
+      "field": "high_availability",
+      "scope": "single-node kind and single Redis replica",
+      "reason": "Persistence supports Pod recreation only; it does not provide Redis replication, failover, or node-failure availability."
+    }
+  ]
+}

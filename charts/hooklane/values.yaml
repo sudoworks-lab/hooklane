@@ -1,0 +1,213 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+
+config:
+  redisURL: redis://hooklane-redis:6379/0
+
+retry:
+  maximumAttempts: 5
+  pendingIdleMilliseconds: 60000
+
+observability:
+  enabled: false
+  metricsPort: 9090
+  scrapeInterval: 5s
+  prometheus:
+    replicaCount: 1
+    image:
+      repository: prom/prometheus
+      tag: v3.12.0-distroless
+      digest: sha256:f39df5334dee301b885f77e0ff1159f5d8a43bf9db518f885544594799a1e3c2
+    service:
+      port: 9090
+    retentionTime: 2h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  grafana:
+    replicaCount: 1
+    image:
+      repository: grafana/grafana
+      tag: 13.0.2
+      digest: sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
+    service:
+      port: 3000
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 300m
+        memory: 384Mi
+
+api:
+  replicaCount: 2
+  image:
+    repository: hooklane-api
+    tag: 0.1.0
+    digest: ""
+  service:
+    type: NodePort
+    port: 8080
+    nodePort: 30080
+  strategy:
+    maxUnavailable: 0
+    maxSurge: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  probes:
+    startup:
+      enabled: true
+      path: /health/live
+      periodSeconds: 2
+      timeoutSeconds: 1
+      failureThreshold: 30
+    readiness:
+      enabled: true
+      path: /health/ready
+      periodSeconds: 2
+      timeoutSeconds: 1
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      path: /health/live
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+  terminationGracePeriodSeconds: 30
+
+worker:
+  replicaCount: 1
+  image:
+    repository: hooklane-worker
+    tag: 0.1.0
+    digest: ""
+  strategy:
+    maxUnavailable: 0
+    maxSurge: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  probes:
+    startup:
+      enabled: true
+      command: ["python", "-m", "hooklane.worker.health", "startup"]
+      periodSeconds: 2
+      timeoutSeconds: 5
+      failureThreshold: 30
+    readiness:
+      enabled: true
+      command: ["python", "-m", "hooklane.worker.health", "ready"]
+      periodSeconds: 2
+      timeoutSeconds: 5
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 3
+  terminationGracePeriodSeconds: 30
+
+mockSink:
+  replicaCount: 1
+  image:
+    repository: hooklane-mock-sink
+    tag: 0.1.0
+    digest: ""
+  failureMode: accept
+  delaySeconds: 0
+  service:
+    port: 8080
+  strategy:
+    maxUnavailable: 0
+    maxSurge: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  probes:
+    readiness:
+      enabled: true
+      path: /health/live
+      periodSeconds: 2
+      timeoutSeconds: 1
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      path: /health/live
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+  terminationGracePeriodSeconds: 30
+
+redis:
+  replicaCount: 1
+  image:
+    repository: redis
+    tag: 8.0.1-alpine
+    digest: sha256:62b5498c91778f738f0efbf0a6fd5b434011235a3e7b5f2ed4a2c0c63bb1c786
+  service:
+    port: 6379
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  probes:
+    readiness:
+      enabled: true
+      periodSeconds: 2
+      timeoutSeconds: 1
+      failureThreshold: 5
+    liveness:
+      enabled: true
+      periodSeconds: 5
+      timeoutSeconds: 1
+      failureThreshold: 3
+  terminationGracePeriodSeconds: 30
+
+pdb:
+  api:
+    enabled: true
+    minAvailable: 1
+  worker:
+    enabled: true
+    maxUnavailable: 1
+  mockSink:
+    enabled: true
+    maxUnavailable: 1
+  redis:
+    enabled: true
+    maxUnavailable: 1
+
+secrets:
+  create: true

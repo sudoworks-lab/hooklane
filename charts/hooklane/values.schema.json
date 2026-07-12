@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "nameOverride": {"type": "string"},
+    "fullnameOverride": {"type": "string"},
+    "imagePullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]},
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "name", "automountServiceAccountToken"],
+      "properties": {
+        "create": {"type": "boolean"},
+        "name": {"type": "string"},
+        "automountServiceAccountToken": {"type": "boolean"}
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redisURL"],
+      "properties": {"redisURL": {"type": "string", "minLength": 1}}
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumAttempts", "pendingIdleMilliseconds"],
+      "properties": {
+        "maximumAttempts": {"type": "integer", "minimum": 1},
+        "pendingIdleMilliseconds": {"type": "integer", "minimum": 0}
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "metricsPort", "scrapeInterval", "prometheus", "grafana"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "metricsPort": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "scrapeInterval": {"type": "string", "pattern": "^[1-9][0-9]*s$"},
+        "prometheus": {"$ref": "#/$defs/prometheusWorkload"},
+        "grafana": {"$ref": "#/$defs/grafanaWorkload"}
+      }
+    },
+    "api": {"$ref": "#/$defs/httpWorkload"},
+    "worker": {"$ref": "#/$defs/workerWorkload"},
+    "mockSink": {"$ref": "#/$defs/mockSinkWorkload"},
+    "redis": {"$ref": "#/$defs/redisWorkload"},
+    "pdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api", "worker", "mockSink", "redis"],
+      "properties": {
+        "api": {"$ref": "#/$defs/minAvailablePdb"},
+        "worker": {"$ref": "#/$defs/maxUnavailablePdb"},
+        "mockSink": {"$ref": "#/$defs/maxUnavailablePdb"},
+        "redis": {"$ref": "#/$defs/maxUnavailablePdb"}
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create"],
+      "properties": {"create": {"type": "boolean"}}
+    }
+  },
+  "required": [
+    "imagePullPolicy", "serviceAccount", "config", "retry", "observability",
+    "api", "worker", "mockSink", "redis", "pdb", "secrets"
+  ],
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "digest"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string", "minLength": 1, "not": {"const": "latest"}},
+        "digest": {"type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": {"$ref": "#/$defs/resourcePair"},
+        "limits": {"$ref": "#/$defs/resourcePair"}
+      }
+    },
+    "resourcePair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory"],
+      "properties": {
+        "cpu": {"type": "string", "minLength": 1},
+        "memory": {"type": "string", "minLength": 1}
+      }
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxUnavailable", "maxSurge"],
+      "properties": {
+        "maxUnavailable": {"type": "integer", "minimum": 0},
+        "maxSurge": {"type": "integer", "minimum": 0}
+      }
+    },
+    "httpProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "path", "periodSeconds", "timeoutSeconds", "failureThreshold"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "path": {"type": "string", "pattern": "^/"},
+        "periodSeconds": {"type": "integer", "minimum": 1},
+        "timeoutSeconds": {"type": "integer", "minimum": 1},
+        "failureThreshold": {"type": "integer", "minimum": 1}
+      }
+    },
+    "execProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "command", "periodSeconds", "timeoutSeconds", "failureThreshold"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "periodSeconds": {"type": "integer", "minimum": 1},
+        "timeoutSeconds": {"type": "integer", "minimum": 1},
+        "failureThreshold": {"type": "integer", "minimum": 1}
+      }
+    },
+    "tcpProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "periodSeconds", "timeoutSeconds", "failureThreshold"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "periodSeconds": {"type": "integer", "minimum": 1},
+        "timeoutSeconds": {"type": "integer", "minimum": 1},
+        "failureThreshold": {"type": "integer", "minimum": 1}
+      }
+    },
+    "redisProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "periodSeconds", "timeoutSeconds", "failureThreshold"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "periodSeconds": {"type": "integer", "minimum": 1},
+        "timeoutSeconds": {"type": "integer", "minimum": 1},
+        "failureThreshold": {"type": "integer", "minimum": 1}
+      }
+    },
+    "minAvailablePdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "minAvailable"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "minAvailable": {"type": "integer", "minimum": 0}
+      }
+    },
+    "maxUnavailablePdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "maxUnavailable"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "maxUnavailable": {"type": "integer", "minimum": 0}
+      }
+    },
+    "observabilityService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    },
+    "prometheusWorkload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaCount", "image", "service", "retentionTime", "resources"],
+      "properties": {
+        "replicaCount": {"const": 1},
+        "image": {"$ref": "#/$defs/image"},
+        "service": {"$ref": "#/$defs/observabilityService"},
+        "retentionTime": {"type": "string", "pattern": "^[1-9][0-9]*[hm]$"},
+        "resources": {"$ref": "#/$defs/resources"}
+      }
+    },
+    "grafanaWorkload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaCount", "image", "service", "resources"],
+      "properties": {
+        "replicaCount": {"const": 1},
+        "image": {"$ref": "#/$defs/image"},
+        "service": {"$ref": "#/$defs/observabilityService"},
+        "resources": {"$ref": "#/$defs/resources"}
+      }
+    },
+    "httpWorkload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaCount", "image", "service", "strategy", "resources", "probes", "terminationGracePeriodSeconds"],
+      "properties": {
+        "replicaCount": {"type": "integer", "minimum": 2},
+        "image": {"$ref": "#/$defs/image"},
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "port", "nodePort"],
+          "properties": {
+            "type": {"enum": ["ClusterIP", "NodePort"]},
+            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "nodePort": {"type": "integer", "minimum": 30000, "maximum": 32767}
+          }
+        },
+        "strategy": {"$ref": "#/$defs/strategy"},
+        "resources": {"$ref": "#/$defs/resources"},
+        "probes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["startup", "readiness", "liveness"],
+          "properties": {
+            "startup": {"$ref": "#/$defs/httpProbe"},
+            "readiness": {"$ref": "#/$defs/httpProbe"},
+            "liveness": {"$ref": "#/$defs/httpProbe"}
+          }
+        },
+        "terminationGracePeriodSeconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "workerWorkload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaCount", "image", "strategy", "resources", "probes", "terminationGracePeriodSeconds"],
+      "properties": {
+        "replicaCount": {"type": "integer", "minimum": 1},
+        "image": {"$ref": "#/$defs/image"},
+        "strategy": {"$ref": "#/$defs/strategy"},
+        "resources": {"$ref": "#/$defs/resources"},
+        "probes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["startup", "readiness", "liveness"],
+          "properties": {
+            "startup": {"$ref": "#/$defs/execProbe"},
+            "readiness": {"$ref": "#/$defs/execProbe"},
+            "liveness": {"$ref": "#/$defs/tcpProbe"}
+          }
+        },
+        "terminationGracePeriodSeconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "mockSinkWorkload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaCount", "image", "failureMode", "delaySeconds", "service", "strategy", "resources", "probes", "terminationGracePeriodSeconds"],
+      "properties": {
+        "replicaCount": {"type": "integer", "minimum": 1},
+        "image": {"$ref": "#/$defs/image"},
+        "failureMode": {"enum": ["accept", "delay", "post_receipt_delay", "server_error"]},
+        "delaySeconds": {"type": "number", "minimum": 0, "maximum": 30},
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["port"],
+          "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+        },
+        "strategy": {"$ref": "#/$defs/strategy"},
+        "resources": {"$ref": "#/$defs/resources"},
+        "probes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readiness", "liveness"],
+          "properties": {
+            "readiness": {"$ref": "#/$defs/httpProbe"},
+            "liveness": {"$ref": "#/$defs/httpProbe"}
+          }
+        },
+        "terminationGracePeriodSeconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "redisWorkload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaCount", "image", "service", "persistence", "resources", "probes", "terminationGracePeriodSeconds"],
+      "properties": {
+        "replicaCount": {"const": 1},
+        "image": {"$ref": "#/$defs/image"},
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["port"],
+          "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "size", "storageClassName"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "size": {"type": "string", "minLength": 1},
+            "storageClassName": {"type": "string"}
+          }
+        },
+        "resources": {"$ref": "#/$defs/resources"},
+        "probes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readiness", "liveness"],
+          "properties": {
+            "readiness": {"$ref": "#/$defs/redisProbe"},
+            "liveness": {"$ref": "#/$defs/redisProbe"}
+          }
+        },
+        "terminationGracePeriodSeconds": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

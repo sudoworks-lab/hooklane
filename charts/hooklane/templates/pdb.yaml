@@ -1,0 +1,63 @@
+{{- if .Values.pdb.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hooklane.fullname" . }}-api
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: {{ .Values.pdb.api.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "hooklane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}
+{{- if .Values.pdb.worker.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hooklane.fullname" . }}-worker
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  maxUnavailable: {{ .Values.pdb.worker.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "hooklane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+{{- end }}
+{{- if .Values.pdb.mockSink.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hooklane.fullname" . }}-mock-sink
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-sink
+spec:
+  maxUnavailable: {{ .Values.pdb.mockSink.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "hooklane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mock-sink
+{{- end }}
+{{- if .Values.pdb.redis.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "hooklane.fullname" . }}-redis
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  maxUnavailable: {{ .Values.pdb.redis.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "hooklane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+{{- end }}

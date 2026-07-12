@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "hooklane.fullname" . }}-test
+  labels:
+    {{- include "hooklane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ include "hooklane.serviceAccountName" . }}
+  automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: smoke
+      image: {{ include "hooklane.image" .Values.api.image }}
+      imagePullPolicy: {{ .Values.imagePullPolicy }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      command: ["python"]
+      args:
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen(
+          'http://{{ include "hooklane.fullname" . }}-api:{{ .Values.api.service.port }}/health/live',
+          timeout=5).close()
+      resources:
+        {{- toYaml .Values.api.resources | nindent 8 }}
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Mi

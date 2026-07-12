@@ -1,0 +1,22 @@
+# Goal loopの周回ログ(commitしない)
+logs/
+
+# 環境固有・機密(必要に応じて追加)
+.env
+.env.*
+
+# 依存・キャッシュ・ビルド成果物
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+tmp/
+temp/
+
+# Hooklane project-local generated files
+!.env.example
+artifacts/

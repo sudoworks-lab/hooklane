@@ -1,0 +1,26 @@
+[python]
+version = "3.12.3"
+
+[tools.required]
+bash = "5.2.21"
+git = "2.43.0"
+make = "4.3"
+docker = "29.5.3"
+docker_compose = "5.1.4"
+kubectl = "1.34.1"
+
+[tools.optional]
+kind = "0.32.0"
+helm = "4.2.3"
+gitleaks = "8.30.1"
+osv_scanner = "2.4.0"
+trivy = "0.72.0"
+kubeconform = "0.7.0"
+
+[resources]
+min_cpus = 4
+min_memory_gib = 8
+min_disk_gib = 20
+
+[images]
+kind_node = "kindest/node:v1.34.8@sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256"
