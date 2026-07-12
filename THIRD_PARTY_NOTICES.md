@@ -1,42 +1,42 @@
 # Third-party notices
 
-## 1. Scope
+## 対象
 
-This document identifies third-party software referenced by the Hooklane source repository for transparency. It records repository facts and does not claim to be a complete legal determination. Exact versions and immutable references are maintained in the repository files identified below.
+この文書は、Hooklane source repositoryが参照する第三者softwareを整理する。repository内で確認できる事実を記録するものであり、完全な法的判断を示すものではない。exact versionとimmutable referenceは、以下のrepository fileを正本とする。
 
-## 2. No vendored third-party source
+## vendored third-party sourceなし
 
-The repository does not vendor third-party source trees or third-party executable binaries. It contains Hooklane source, configuration, tests, documentation, a generated Python dependency lockfile, and provisioning definitions. Upstream projects are installed, pulled, or invoked by users and CI when they run the documented workflows.
+このrepositoryは第三者source treeや実行binaryをvendorしない。Hooklaneのsource、configuration、test、documentation、generated Python dependency lockfile、provisioning definitionを含む。上流projectは、文書化されたworkflowの実行時に利用者またはCIがinstall、pull、invokeする。
 
-## 3. Python dependencies
+## Python dependency
 
-Runtime and build dependencies are declared in `pyproject.toml`; the exact direct and transitive package versions are recorded in `requirements.lock`. A local application-image build installs those packages into the image. Package license names and notices should be reviewed from the metadata and license files supplied by each exact upstream package version. This repository does not reproduce those license texts here.
+runtimeとbuild dependencyは[pyproject.toml](pyproject.toml)に、direct／transitive packageのexact versionは[requirements.lock](requirements.lock)に記録する。local application-image buildはこれらのpackageをimageへinstallする。license名とnoticeは各exact upstream package versionに付属するmetadataとlicense fileで確認する。このrepositoryはそれらのlicense本文を転載しない。
 
-## 4. Container base and runtime images
+## container baseとruntime image
 
-The Dockerfile references the Python base image. Docker Compose and the Helm chart reference Redis, while the optional observability topology references Prometheus and Grafana. Exact tags and digests are recorded in `Dockerfile`, `compose.yaml`, `charts/hooklane/values.yaml`, `container-policy.json`, and `toolchain.toml`.
+DockerfileはPython base imageを参照する。Docker ComposeとHelm chartはRedisを参照し、任意のobservability構成はPrometheusとGrafanaを参照する。exact tagとdigestは[Dockerfile](Dockerfile)、[compose.yaml](compose.yaml)、[charts/hooklane/values.yaml](charts/hooklane/values.yaml)、[container-policy.json](container-policy.json)、[toolchain.toml](toolchain.toml)に記録する。
 
-These upstream images are not stored in this Git repository. Users pull them or build application images locally. Their upstream licenses and notices apply independently and should be reviewed before redistribution.
+これらのupstream imageはGit repositoryに保存しない。利用者がpullするかapplication imageをlocal buildする。redistribution前には各上流のlicenseとnoticeを確認する。
 
-## 5. Development and validation tools
+## 開発と検証tool
 
-The local and CI validation workflow uses kind, Helm, Gitleaks, OSV-Scanner, Trivy, and Kubeconform. Exact tool versions are recorded in `toolchain.toml` and `security-policy.json`. These tools are not vendored or distributed as repository binaries.
+localとCIの検証workflowはkind、Helm、Gitleaks、OSV-Scanner、Trivy、Kubeconformを使う。exact tool versionは[toolchain.toml](toolchain.toml)と[security-policy.json](security-policy.json)に記録する。これらのtoolをrepository binaryとして配布しない。
 
-## 6. GitHub Actions
+## GitHub Actions
 
-The workflow in `.github/workflows/ci.yml` references `actions/checkout`, `actions/setup-python`, and `actions/upload-artifact` by full commit SHA. The action implementations are not vendored in this repository. Review the corresponding upstream revision for its license and notices.
+[.github/workflows/ci.yml](.github/workflows/ci.yml)は`actions/checkout`、`actions/setup-python`、`actions/upload-artifact`をfull commit SHAで参照する。action implementationはrepositoryへvendorしない。licenseとnoticeは該当するupstream revisionで確認する。
 
-## 7. Distribution note
+## 配布に関する注記
 
-Hooklane v0.1 is published as source only. The repository does not publish prebuilt container images, container-registry artifacts, release archives, or binary distributions. Building or redistributing dependencies or images may create obligations under their respective upstream licenses; users should review the exact upstream materials for their distribution.
+Hooklane v0.1.0はsource-onlyで公開している。prebuilt container image、container-registry artifact、release archive、binary distributionは配布しない。dependencyやimageのbuildまたはredistributionには各上流licenseに基づく義務が生じ得るため、exact upstream materialを確認する。
 
-## 8. How to review exact versions
+## exact versionの確認方法
 
-- Python packages: `pyproject.toml` and `requirements.lock`
-- Python base image: `Dockerfile`
-- Redis, Prometheus, and Grafana images: `compose.yaml`, `charts/hooklane/values.yaml`, and `container-policy.json`
-- kind node and validation tools: `toolchain.toml`
-- Security scanners: `security-policy.json`
-- GitHub Actions: `.github/workflows/ci.yml`
+- Python package: [pyproject.toml](pyproject.toml)と[requirements.lock](requirements.lock)
+- Python base image: [Dockerfile](Dockerfile)
+- Redis、Prometheus、Grafana image: [compose.yaml](compose.yaml)、[charts/hooklane/values.yaml](charts/hooklane/values.yaml)、[container-policy.json](container-policy.json)
+- kind nodeとvalidation tool: [toolchain.toml](toolchain.toml)
+- security scanner: [security-policy.json](security-policy.json)
+- GitHub Actions: [.github/workflows/ci.yml](.github/workflows/ci.yml)
 
-For later revisions, review these files together with the license and notice files published by the exact upstream versions.
+後続revisionでは、これらのfileとexact upstream versionのlicense、noticeを合わせて確認する。

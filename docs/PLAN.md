@@ -423,3 +423,8 @@ git diff --check
 - 自動push、外部公開、cloud課金。
 
 KICKOFF自体ではDockerfile、Compose、Kubernetes manifest、Helm chart、Prometheus/Grafana、GitHub Actions、incident drillを作成せず、Goal Loop第1周も開始しない。
+
+## 判断メモ
+
+- 2026-07-13: 「v0.1 public snapshot」節のGitHub Actionsに関する記述は、公開前の計画時点を示す。現在の事実は[検証根拠](RELEASE_EVIDENCE.md)を正本とし、GitHub hosted Actionsでquality / security / chart gatesとkind delivery and recovery E2Eの成功を確認済み。
+- v0.1.0のtagとGitHub Releaseは公開済み。cloud production、実在する外部downstream、multi-node／multi-zone、long-running load、本番traffic、30日SLO達成実績は未確認のままとする。

@@ -1,69 +1,79 @@
-# Hooklane v0.1 release evidence
+# Hooklane 検証根拠
 
-## Scope
+## 対象
 
-This document records the technical acceptance boundary for the Hooklane v0.1 source snapshot. It summarizes reproducible repository contracts and local verification; it is not an operational history or a production certification.
+この文書はHooklaneの公開済みsource snapshotと公開mainに対する技術的な検証境界を記録する。reproducibleなrepository contractと検証結果の要約であり、運用履歴、cloud productionの認定、security certificationではない。
 
-## Feature acceptance
+## feature受け入れ
 
-- F001 through F029 are verified in `features.json`: 29/29 have `passes: true`.
-- Blocked feature count is 0.
-- Feature descriptions and verification steps remain the machine-readable acceptance contract.
+- `features.json`のF001〜F029は29/29で`passes: true`
+- blocked feature countは0
+- featureのdescriptionとverification stepはmachine-readableなacceptance contractとして維持する
 
-## Quality gate
+## quality gate
 
-`make verify` is the aggregate quality gate. It runs syntax and configuration checks, Ruff, strict mypy, unit and integration suites, security scans, Helm and Kubernetes validation, and documentation contracts. Acceptance requires every constituent command to exit successfully.
+`make verify`はsyntax／configuration check、Ruff、strict mypy、unit／integration test、security scan、Helm／Kubernetes validation、文書contractを集約する。全ての構成commandがsuccessであることを受け入れ条件とする。
 
-## Runtime verification
+## runtime検証
 
-### Compose demo
+### Compose
 
-`make demo-smoke` verifies local image build, service health, event acceptance, asynchronous delivery, status lookup, metrics exposure, and project-specific cleanup.
+`make demo-smoke`はlocal image build、service health、event受付、非同期配送、status参照、metrics、project専用resourceのcleanupを確認する。
 
 ### kind E2E
 
-`make e2e-kind` verifies the pinned kind and Helm topology, normal delivery, idempotency, retry, pending recovery, status lookup, and cleanup.
+`make e2e-kind`は固定したkindとHelm構成で、正常配送、idempotency、retry、pending recovery、status参照、cleanupを確認する。
 
-### Rollout and rollback
+### rolling updateとrollback
 
-`make rollout-smoke` verifies an available rolling update, bounded worker drain, rejection of an intentionally bad revision, explicit Helm rollback, and recovery.
+`make rollout-smoke`はavailableなrolling update、bounded worker drain、意図的なbad revisionの拒否、Helm rollback、復旧を確認する。
 
-### Observability smoke
+### observability
 
-`make observability-smoke` verifies Prometheus targets and metrics, Grafana provisioning, SLI queries, alert rules, Runbook references, injected failure signals, and recovery.
+`make observability-smoke`はPrometheus targetとmetric、Grafana provisioning、SLI query、alert rule、Runbook参照、障害signal、復旧を確認する。
 
-### Incident smoke
+### incident drill
 
-`make incident-smoke` verifies the downstream 5xx, Redis outage, and worker-stop scenarios, including detection, recovery, and accepted-event accounting.
+`make incident-smoke`はdownstream 5xx、Redis outage、worker stopを対象に、検知、復旧、accepted eventの整合を確認する。
 
-### Clean-room verification
+### clean-room
 
-`make clean-room` reconstructs a disposable candidate from tracked Git state without hardlinks, then runs initialization, dependency setup, verify, demo, kind E2E, rollout, observability, incident, documentation, diff, and cleanup contracts.
+`make clean-room`はtracked Git candidateからhardlinkなしの一時cloneを作り、initialization、dependency setup、verify、Compose、kind E2E、rollout、observability、incident、documentation、diff、cleanup contractを実行する。
 
-## Security scanning
+## GitHub Actions
 
-The accepted local gate reported:
+- GitHub hosted Actionsは公開mainで実行済み
+- Quality, security, and chart gatesはsuccess
+- kind delivery and recovery E2Eはsuccess
+- success時のfailure diagnostics uploadはskip、cleanupはsuccess
+- Node.js 20 deprecation annotationは現行workflowで発生していない
 
-- Gitleaks: no secret findings in the scanned Git history or working tree.
-- OSV-Scanner: no known vulnerabilities in `requirements.lock`.
-- Trivy filesystem and the locally built API, worker, and mock-sink images: no HIGH or CRITICAL findings under the repository policy.
+Hosted CIは現在の公開mainに対する自動検証であり、cloud productionや本番trafficの実績ではない。
 
-Scanner databases and upstream advisories change. These results describe the verified snapshot and must be rerun for later revisions.
+## security scan
 
-## Verified facts
+受け入れたlocal gateの結果は次の通り。
 
-- The local mechanical quality, security, documentation, Helm, Compose, kind, rollout, observability, and incident contracts passed.
-- Delivery is at-least-once and can produce duplicate downstream attempts.
-- The verified topology is local, single-node kind with a single Redis instance and the repository mock sink.
-- Runtime verification uses locally built application images and pinned upstream images.
+- Gitleaks: scanned Git historyとworking treeでsecret findingなし
+- OSV-Scanner: `requirements.lock`にknown vulnerabilityなし
+- Trivy filesystemとlocal buildしたAPI、worker、mock-sink image: repository policy上のHIGH／CRITICAL findingなし
 
-## Not verified
+scanner databaseとupstream advisoryは変化する。結果は検証したsnapshotの事実であり、後続revisionでは再実行が必要となる。
 
-- GitHub hosted Actions has not been executed.
-- Cloud production, external downstream systems, multi-node or multi-zone availability, long-running load, and production traffic have not been verified.
-- The SLO is a design target, not evidence of rolling 30-day attainment.
-- This evidence is not a claim of production readiness, security certification, or operational experience.
+## 実証済みの事実
 
-## Distribution boundary
+- localのquality、security、documentation、Helm、Compose、kind、rollout、observability、incident contractはpass
+- 配送はat-least-onceであり、downstreamへのattemptが重複し得る
+- 検証した構成はsingle-node kind、single Redis、repository内mock sink
+- runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
+- v0.1.0のtagとGitHub Releaseは公開済み
 
-This repository is a source-only distribution. It publishes source code, Dockerfile, Helm chart, configuration, documentation, and validation procedures. It does not provide prebuilt container images, a container registry, release artifacts, or binary distributions. Users build application images locally; upstream licenses and notices continue to apply to third-party dependencies and images.
+## 未確認事項
+
+- cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
+- rolling 30日のSLO達成実績
+- production Alertmanager、notification destination、on-call運用
+
+## 配布範囲
+
+Hooklaneはsource-onlyで配布する。source code、Dockerfile、Helm chart、configuration、documentation、検証手順を含む。prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildし、第三者dependencyとupstream imageには各上流のlicenseとnoticeが適用される。

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hooklane"
 version = "0.1.0"
-description = "Local webhook delivery reliability lab"
+description = "Webhook delivery service with retry, recovery, and observability"
 requires-python = "==3.12.*"
 dependencies = [
   "fastapi==0.139.0",

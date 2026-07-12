@@ -30,6 +30,8 @@ def test_final_documentation_and_hygiene_contracts(script: str) -> None:
 def test_fresh_public_snapshot_contract() -> None:
     assert not (ROOT / "docs" / "STATUS.md").exists()
     assert (ROOT / "docs" / "RELEASE_EVIDENCE.md").is_file()
+    assert (ROOT / "docs" / "DEVELOPMENT.md").is_file()
+    assert (ROOT / "docs" / "releases" / "v0.1.1.md").is_file()
     assert (ROOT / "THIRD_PARTY_NOTICES.md").is_file()
     assert (ROOT / "LICENSE").is_file()
 
@@ -38,6 +40,11 @@ def test_fresh_public_snapshot_contract() -> None:
     assert "(THIRD_PARTY_NOTICES.md)" in readme
     assert "[MIT License](LICENSE)" in readme
     assert "License未選定" not in readme
+
+    release_notes = (ROOT / "docs" / "releases" / "v0.1.1.md").read_text(
+        encoding="utf-8"
+    )
+    assert "application behaviorの変更なし" in release_notes
 
     features = json.loads(
         (ROOT / "docs" / "features.json").read_text(encoding="utf-8")

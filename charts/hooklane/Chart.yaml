@@ -1,6 +1,6 @@
 apiVersion: v2
 name: hooklane
-description: Local webhook delivery reliability lab chart
+description: Webhook delivery service chart
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

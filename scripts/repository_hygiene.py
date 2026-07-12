@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 FEATURES = ROOT / "docs" / "features.json"
 RELEASE_EVIDENCE = ROOT / "docs" / "RELEASE_EVIDENCE.md"
+RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.1.md"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 LICENSE = ROOT / "LICENSE"
 STATUS = Path("docs") / "STATUS.md"
@@ -175,6 +176,8 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         Path("LICENSE"),
         Path("THIRD_PARTY_NOTICES.md"),
         Path("docs/RELEASE_EVIDENCE.md"),
+        Path("docs/DEVELOPMENT.md"),
+        Path("docs/releases/v0.1.1.md"),
     }
     missing = sorted(path.as_posix() for path in required_paths.difference(files))
     if missing:
@@ -186,13 +189,13 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
 
     for marker in (
         "MIT License",
-        "Copyright (c) 2026 Hooklane contributors",
-        "source-only distribution",
-        "Prebuilt container image",
+        "source-only",
+        "prebuilt container image",
         "docs/RELEASE_EVIDENCE.md",
         "THIRD_PARTY_NOTICES.md",
         "requirements.lock",
-        "GitHub hosted Actions上の実行は未確認",
+        "GitHub hosted Actions",
+        "v0.1.0のtagとGitHub Releaseは公開済み",
     ):
         if marker not in readme:
             fail(f"README release state is missing: {marker}")
@@ -207,9 +210,9 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
     evidence = RELEASE_EVIDENCE.read_text(encoding="utf-8")
     notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8")
     for marker in (
-        "F001 through F029",
+        "F001〜F029",
         "29/29",
-        "Blocked feature count is 0",
+        "blocked feature countは0",
         "make verify",
         "make demo-smoke",
         "make e2e-kind",
@@ -217,32 +220,47 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         "make observability-smoke",
         "make incident-smoke",
         "make clean-room",
-        "GitHub hosted Actions has not been executed",
-        "source-only distribution",
-        "not a claim of production readiness",
+        "GitHub hosted Actionsは公開mainで実行済み",
+        "Quality, security, and chart gatesはsuccess",
+        "kind delivery and recovery E2Eはsuccess",
+        "source-only",
     ):
         if marker not in evidence:
             fail(f"release evidence is missing: {marker}")
     for section in (
-        "## 1. Scope",
-        "## 2. No vendored third-party source",
-        "## 3. Python dependencies",
-        "## 4. Container base and runtime images",
-        "## 5. Development and validation tools",
-        "## 6. GitHub Actions",
-        "## 7. Distribution note",
-        "## 8. How to review exact versions",
+        "## 対象",
+        "## vendored third-party sourceなし",
+        "## Python dependency",
+        "## container baseとruntime image",
+        "## 開発と検証tool",
+        "## GitHub Actions",
+        "## 配布に関する注記",
+        "## exact versionの確認方法",
     ):
         if section not in notices:
             fail(f"third-party notice section is missing: {section}")
     for marker in (
-        "not claim to be a complete legal determination",
-        "does not vendor third-party source trees",
-        "does not publish prebuilt container images",
-        "upstream licenses and notices",
+        "完全な法的判断を示すものではない",
+        "第三者source treeや実行binaryをvendorしない",
+        "prebuilt container image、container-registry artifact、release archive、binary distributionは配布しない",
+        "各上流のlicenseとnotice",
     ):
         if marker not in notices:
             fail(f"third-party notice contract is missing: {marker}")
+
+    notes = RELEASE_NOTES.read_text(encoding="utf-8")
+    for section in (
+        "## 概要",
+        "## READMEと文書構成の整理",
+        "## 古いCI・公開状態の記載修正",
+        "## Goal Loop開発文書の分離",
+        "## package / repository metadata",
+        "## application behavior",
+        "## 検証結果",
+        "## 既知の制約",
+    ):
+        if section not in notes:
+            fail(f"v0.1.1 release notes section is missing: {section}")
 
 
 def feature_state() -> tuple[int, int, int]:

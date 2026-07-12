@@ -1,36 +1,32 @@
-# Hooklane reproducible demonstration
+# Hooklane 再現手順
 
-## 1. Prerequisites
+## 1. 前提
 
-Repository root、Docker daemon、Python、Makeを使用する。kind、Helm、kubectl、security scanner、Kubeconformの固定versionは[`toolchain.toml`](../toolchain.toml)を正本とする。Secret、credential、external registry、cloud accountは不要である。
+repository root、Docker daemon、Python、Makeを使う。kind、Helm、kubectl、security scanner、Kubeconformの固定versionは[`toolchain.toml`](../toolchain.toml)を正本とする。secret、credential、external registry、cloud accountは不要。
 
-このrepositoryはsource-onlyであり、prebuilt container imageやbinaryを配布しない。DemoではDockerfileからapplication imageをlocal buildし、pinned upstream imageを取得する。
-
-Resourceとtoolを確認する。
+Hooklaneはsource-onlyで配布し、prebuilt container imageやbinaryは配布しない。Dockerfileからapplication imageをlocal buildし、固定済みupstream imageを取得する。配布範囲は[README](../README.md#配布範囲)を参照する。
 
 ```bash
 make doctor
 ```
 
-Expected resultは全required tool、Docker daemon、CPU、memory、diskがpassすることである。Host resourceとcache状態により所要時間は変わるため、固定時間は保証しない。
+全required tool、Docker daemon、CPU、memory、diskがpassすることを確認する。host resourceとcache状態により所要時間は変わるため、固定時間は保証しない。
 
-## 2. Repository initialization
+## 2. repository初期化
 
 ```bash
 bash scripts/init.sh
 ```
 
-Project-local virtual environmentとlock済みdependencyを準備し、config、syntax、doctor、fast smokeを検証する。Shell設定、system領域、secret値を変更しない。
+project-local virtual environmentとlock済みdependencyを準備し、config、syntax、doctor、fast smokeを検証する。shell設定、system領域、secret値を変更しない。
 
 ## 3. Compose quick demo
-
-最短のself-cleaning flowは次である。
 
 ```bash
 make demo-smoke
 ```
 
-Targetはinit、Compose起動、health、event受付、delivery、status、metricsを検証し、finallyでHooklane Compose projectのcontainer、network、volumeをcleanupする。
+targetはinit、Compose起動、health、event受付、delivery、status、metricsを検証し、finallyでHooklane Compose projectのcontainer、network、volumeをcleanupする。
 
 段階的に観察する場合は次を使う。
 
@@ -38,39 +34,34 @@ Targetはinit、Compose起動、health、event受付、delivery、status、metri
 make compose-up
 make smoke
 make e2e-local
-```
-
-確認後は必ずcleanupする。
-
-```bash
 make compose-down
 ```
 
-## 4. Event acceptance
+## 4. event受付
 
-`make smoke`または`make demo-smoke`がvalid eventを投入し、APIの`202 Accepted`とUUID event IDを検査する。Request payloadと`Idempotency-Key`生値はoutputへ表示しない。Redisへeventと初期statusを永続化できない場合は202を返さない。
+`make smoke`または`make demo-smoke`がvalid eventを投入し、APIの`202 Accepted`とUUID event IDを検査する。request payloadと`Idempotency-Key`生値はoutputへ表示しない。Redisへeventと初期statusを永続化できない場合は202を返さない。
 
-Manual request bodyを文書へ複製せず、正本runner[`local_e2e.py`](../scripts/local_e2e.py)を使う。
+manual request bodyを文書へ複製せず、正本runnerの[`local_e2e.py`](../scripts/local_e2e.py)を使う。
 
-## 5. Delivered status
+## 5. delivered status
 
-Runnerは返されたevent IDを`GET /v1/events/{event_id}`でpollし、statusが`delivered`、attempt countが1、response event IDが一致することを確認する。Status responseにpayload本文は含まれない。
+runnerは返されたevent IDを`GET /v1/events/{event_id}`でpollし、statusが`delivered`、attempt countが1、response event IDが一致することを確認する。status responseにpayload本文は含まれない。
 
-Composeを保持している場合、既知event IDは次の形で確認できる。
+Composeを保持している場合、既知event IDは次の形で確認する。
 
 ```bash
 curl --fail http://127.0.0.1:18080/v1/events/<event-id>
 ```
 
-## 6. Idempotency
+## 6. idempotency
 
 ```bash
 make e2e-local
 ```
 
-同じ`Idempotency-Key`と同じcontentが同じevent IDを返し、異なるcontentへのkey再利用が409になることを検査する。これはAPI受付のdeduplicationであり、downstream deliveryのexactly-once保証ではない。
+同じ`Idempotency-Key`と同じcontentが同じevent IDを返し、異なるcontentへのkey再利用が409になることを検査する。これはAPI受付の重複排除であり、downstream deliveryのexactly-once保証ではない。
 
-## 7. Metrics and dashboard
+## 7. metricsとdashboard
 
 Compose metrics endpointは次で確認する。
 
@@ -80,7 +71,7 @@ curl --fail http://127.0.0.1:18080/metrics
 make compose-down
 ```
 
-Full observability flowは次である。
+observability構成は次で確認する。
 
 ```bash
 make observability-up
@@ -88,27 +79,20 @@ make observability-smoke
 make observability-down
 ```
 
-Expected resultはapplication target UP、`hooklane_http_requests_total`とdelivery metricsの増加、`hooklane_queue_depth`と`hooklane_pending_messages`の最終0、Grafana dashboard provisioning、PromQL parse、alert recoveryである。
+application targetがUP、`hooklane_http_requests_total`とdelivery metricsが増加し、`hooklane_queue_depth`と`hooklane_pending_messages`が最終的に0へ戻り、Grafana dashboard provisioning、PromQL parse、alert recoveryがsuccessとなることを確認する。
 
 ## 8. kind deploy
-
-Application chartの段階確認は次の通りである。
 
 ```bash
 make cluster-up
 make deploy
 make chart-smoke
-```
-
-Expected resultはAPI 2 replica、worker、mock sink、RedisがReadyとなり、Helm testで202受付と配送が成功することである。Local image buildとkind loadを使用し、external registryへpushしない。
-
-終了時は次を実行する。
-
-```bash
 make cluster-down
 ```
 
-## 9. Rolling update
+API 2 replica、worker、mock sink、RedisがReadyとなり、Helm testで202受付と配送がsuccessとなることを確認する。local image buildとkind loadを使い、external registryへpushしない。
+
+## 9. rolling update
 
 ```bash
 make cluster-up
@@ -117,29 +101,29 @@ make rollout-smoke
 make cluster-down
 ```
 
-API `maxUnavailable: 0`、`maxSurge: 1`、継続request、Ready endpoint維持、worker graceful drain、in-flight event loss 0を検証する。
+APIの`maxUnavailable: 0`、`maxSurge: 1`、継続request、Ready endpoint維持、worker graceful drain、in-flight event loss 0を確認する。
 
-## 10. Bad release and rollback
+## 10. bad releaseとrollback
 
-`make rollout-smoke`はreadinessを通らない安全なbad releaseをlocal cluster内に作り、false successにせずfailureを検知する。その後Helm rollbackでnormal revisionへ戻し、全workload Ready、正常配送、release history、failure injection残存なしを確認する。Irreversible database migrationは対象外である。
+`make rollout-smoke`はreadinessを通らない安全なbad releaseをlocal cluster内に作り、failureを検知する。その後Helm rollbackでnormal revisionへ戻し、全workload Ready、正常配送、release history、failure injection残存なしを確認する。irreversible database migrationは対象外。
 
-## 11. Incident drills
+## 11. incident drill
 
 ```bash
 make incident-smoke
 ```
 
-次のdrillをID順に実行する。
+次のdrillを順に実行する。
 
-1. Downstream 5xxでdelivery failure、retry、backlog、alert、復旧を確認する。
-2. Redis outageでreadiness false、liveness維持、non-202、Redis metric/alert、PVC state維持、復旧を確認する。
-3. Worker stopでside effect後・ack前のpending、replacement claim、same event ID retry、duplicate可能性、accepted event loss 0を確認する。
+1. downstream 5xxでdelivery failure、retry、backlog、alert、復旧を確認する
+2. Redis outageでreadiness false、liveness維持、non-202、Redis metric／alert、PVC state維持、復旧を確認する
+3. worker stopでside effect後・ack前のpending、replacement claim、同じevent IDのretry、duplicate可能性、accepted event loss 0を確認する
 
-Incident receipt、Runbook、postmortemは[Operations index](OPERATIONS.md#incident-and-postmortem-index)を参照する。
+incident記録、Runbook、postmortemは[運用](OPERATIONS.md#incidentとpostmortemの一覧)を参照する。
 
-## 12. Cleanup
+## 12. cleanup
 
-実行したflowに対応するtargetだけを使用する。
+実行したflowに対応するtargetだけを使う。
 
 ```bash
 make compose-down
@@ -148,42 +132,42 @@ make cluster-down
 make runtime-hygiene-check
 ```
 
-`runtime-hygiene-check`はHooklane専用kind cluster、Compose container/network/volume、dedicated kubeconfig、test Redis containerが残っていないことを確認する。Unrelated Docker resourceへ触れない。
+`runtime-hygiene-check`はHooklane専用kind cluster、Compose container／network／volume、dedicated kubeconfig、test Redis containerが残っていないことを確認する。無関係なDocker resourceへ触れない。
 
-## 13. Expected evidence
+## 13. 確認内容
 
-### Architecture
+### アーキテクチャ
 
-- API、Redis Streams、worker、mock sinkの境界が[Architecture](ARCHITECTURE.md)とruntime workloadに一致する。
-- Accepted eventはRedis queue/statusへ保存され、workerがevent IDを維持して配送する。
-- Composeとkind/Helmの二つのlocal topologyを同じapplication imageで検証する。
+- API、Redis Streams、worker、mock sinkの境界が[アーキテクチャ](ARCHITECTURE.md)とruntime workloadに一致する
+- accepted eventはRedis queue／statusへ保存され、workerがevent IDを維持して配送する
+- Composeとkind／Helmのローカル構成を同じapplication imageで検証する
 
-### Failure modes
+### 障害時の動作
 
-- Downstream 5xxはretry/backlog、Redis outageはreadiness/fail-closed、worker stopはpending recoveryとして観測される。
-- Bad releaseはReadyにならず、rollback後に正常deliveryが回復する。
-- Incident終了時にfailure injection、queue、pending、active alertが正常化する。
+- downstream 5xxはretry／backlog、Redis outageはreadiness／fail-closed、worker stopはpending recoveryとして観測される
+- bad releaseはReadyにならず、rollback後に正常deliveryが回復する
+- incident終了時にfailure injection、queue、pending、active alertが通常状態へ戻る
 
-### Health semantics
+### healthの意味
 
-- Livenessはprocess health、readinessはtraffic eligibility、metricsは観測dataとして分離される。
-- Redis outage中もAPI livenessは維持され、readinessはfalse、新規eventは202成功扱いにならない。
-- Shutdown開始Podはreadinessから外れ、workerはbounded graceful drainを行う。
+- livenessはprocess health、readinessはtraffic eligibility、metricsは観測dataとして分離する
+- Redis outage中もAPI livenessは維持され、readinessはfalse、新規eventは202成功扱いにならない
+- shutdown開始Podはreadinessから外れ、workerはbounded graceful drainを行う
 
-### Verification results
+### 検証結果
 
-- `make verify`がlint、strict type、unit/integration、security、chart、docsをfail-closedで集約する。
-- `make demo-smoke`、`make e2e-kind`、`make rollout-smoke`、`make observability-smoke`、`make incident-smoke`が各runtime contractを機械判定する。
-- `make clean-room`がtracked HEADまたは明示stage済みcandidateだけから同じflowを再実行し、cleanupとrepository hygieneを確認する。
+- `make verify`がlint、strict type、unit／integration、security、chart、docsをfail-closedで集約する
+- `make demo-smoke`、`make e2e-kind`、`make rollout-smoke`、`make observability-smoke`、`make incident-smoke`が各runtime contractを機械判定する
+- `make clean-room`がtracked candidateだけから同じflowを再実行し、cleanupとrepository hygieneを確認する
+- GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを確認済み
 
-### Constraints
+### 制約
 
-- Local、single-node kind、single Redis、default single worker、project mock sinkの短時間検証である。
-- Deliveryはat-least-onceでduplicate可能性があり、downstream event-ID deduplicationが必要である。
-- GitHub hosted Actions、cloud production、external downstream、long-running load、30日SLO attainmentは未確認である。
-- Hooklane sourceはMIT Licenseで提供し、third-party dependencyとupstream imageには各上流licenseとnoticeが適用される。Exact referenceは[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)を参照する。
-- Source-only公開はproduction readiness、hosted service、binary distributionを意味しない。
+- ローカル、single-node kind、single Redis、default single worker、project mock sinkの短時間検証
+- deliveryはat-least-onceでduplicate可能性があり、downstreamのevent ID重複排除が必要
+- cloud production、実在する外部downstream、long-running load、30日SLO attainmentは未確認
+- Hooklane sourceはMIT Licenseで提供し、third-party dependencyとupstream imageには各上流licenseとnoticeが適用される。確認範囲は[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)を参照する
 
-## 14. Known limitations
+## 14. 既知の制約
 
-Full listは[Limitations](LIMITATIONS.md)を参照する。Demo evidenceをproduction readiness、exactly-once delivery、HA、capacity、security certification、30日SLO実績として解釈しない。
+一覧は[制約](LIMITATIONS.md)を参照する。再現手順の結果をproduction readiness、exactly-once delivery、HA、capacity、security certification、30日SLO実績として解釈しない。

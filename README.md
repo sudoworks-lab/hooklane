@@ -1,102 +1,94 @@
 # Hooklane
 
-Hooklaneは、HTTPで受け付けたeventをRedis Streamsへ安全にenqueueし、非同期workerがdownstreamへ配送するlocal demonstrationである。受付と配送を分離し、retry、dead-letter、pending recovery、status参照、structured logs、Prometheus metricsを一つの再現可能なrepositoryで検証する。
+Hooklaneは、Webhookを受け付けてRedis Streamsへ保存し、非同期workerで配送するWebhook配送基盤。受付と配送を分離し、downstream障害をAPI受付の成否から切り離す。
 
-このprojectはnon-production-readyである。Cloud production、external downstream、multi-node availability、30日SLO実績を提供しない。
+- API、Redis Streams、worker、固定mock sinkで構成する
+- retry、dead-letter、pending recovery、配送status参照を持つ
+- ローカル検証とGitHub Actionsでquality、security、Kubernetes contractを確認する
+- cloud production、実在する外部downstream、長期負荷の実績は持たない
 
-## Quick start
+## 主な機能
 
-PrerequisitesはDocker daemon、Python、Makeである。固定tool versionとresource条件は[`toolchain.toml`](toolchain.toml)を参照する。Default demoはcredentialやsecretを要求しない。
+- `POST /v1/events`でeventを受け付け、Redisへの永続化成功時だけ`202 Accepted`を返す
+- `Idempotency-Key`で重複受付を抑止し、同一keyの内容不一致は`409 Conflict`とする
+- Redis Streams consumer groupで非同期配送し、retry、dead-letter、pending recoveryを扱う
+- `GET /v1/events/{event_id}`で配送状態とattempt数を参照する
+- structured logs、Prometheus metrics、Grafana dashboard、alert、Runbookを同じrepositoryで管理する
 
-```bash
-make demo-smoke
-```
-
-このtargetはproject-local initialization、Compose image buildと起動、liveness/readiness、eventの`202 Accepted`、`delivered` status、metrics endpointを検証し、成功・失敗のどちらでもHooklane Compose resourceをcleanupする。Expected resultは最後にdemo passとcontainer、network、volume cleanupが表示されることである。
-
-`.env.example`はempty placeholderだけを持つtracked contractであり、default demoでcopyや値設定は不要である。値はこのREADMEへ転載しない。Placeholder-only contractは`make env-example-check`で確認できる。
-
-## Source distribution
-
-このrepositoryはsource-only distributionであり、Hooklaneのsource code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する。Prebuilt container image、container registry、release artifact、binary distributionは現時点で提供しない。
-
-利用者はDockerfileからapplication imageをlocal buildする。Python dependency、base image、Redis、Prometheus、Grafanaその他third-party softwareには各上流のlicenseとnoticeが適用される。対象とversion正本は[Third-party notices](THIRD_PARTY_NOTICES.md)を参照する。Source-only公開はproduction readiness、hosted service、運用保証を意味しない。
-
-## Problem and approach
-
-Webhookやevent deliveryでは、downstream failureをAPI受付へ直接結合すると、timeout、retry、duplicate、status追跡が曖昧になる。Hooklaneは次の境界を置く。
-
-1. APIがinputとidempotencyを検証する。
-2. Eventと初期statusをRedisへ原子的に保存できた場合だけ202を返す。
-3. WorkerがRedis Streams consumer groupから非同期配送する。
-4. Retryable failureはbounded backoffとjitterで再試行し、policy上限またはnon-retryable failureはdead-letterへ終端する。
-5. Worker停止後はpending messageをreplacement workerがclaimする。
-
-詳細は[Architecture](docs/ARCHITECTURE.md)を参照する。
-
-## Architecture overview
+## アーキテクチャ概要
 
 ```text
-client -> API -> Redis Streams -> worker -> downstream mock sink
+client -> API -> Redis Streams -> worker -> mock sink
            |          |
            +-> status +-> retry / pending / dead-letter
 
 API / worker / mock sink -> Prometheus -> Grafana / alerts -> Runbooks
 ```
 
-- APIはrequest validation、idempotency、enqueue、status、health、metricsを担当する。
-- Redisはqueue、status、retry schedule、consumer pending、dead-letterを保持する。
-- Workerはdelivery、retry分類、pending recovery、graceful shutdownを担当する。
-- Mock sinkはlocal success receiptと安全なfailure injectionを提供する。
-- Helm chartはkind上のapplication、Redis、任意のPrometheus/Grafanaを管理する。
+- APIは入力検証、idempotency、enqueue、status、health、metricsを担当する
+- Redisはqueue、status、retry schedule、pending、dead-letterを保持する
+- workerは配送、retry判定、pending recovery、graceful shutdownを担当する
+- mock sinkは配送確認と障害注入にだけ使う
 
-## Key guarantees
+詳細なdata flowと責務は[アーキテクチャ](docs/ARCHITECTURE.md)を参照する。
 
-- Redisへeventを永続化できた場合だけ`202 Accepted`を返す。
-- 同じ`Idempotency-Key`と同じrequestは同じevent IDへ収束し、異なるcontentへのkey再利用は409となる。
-- Deliveryはat-least-onceで、worker停止時もpending recoveryによりaccepted eventを処理継続する。
-- Downstreamはevent IDをdeduplication keyとしてduplicate side effectを抑止できるcontractを持つ。
-- Liveness、readiness、metrics endpointを分離し、Redis outage時はAPI readinessをfalseにしてfalse enqueueを防ぐ。
-- Structured JSON logsはpayload、`Idempotency-Key`生値、credential、connection secretを含めない。
-- Metrics labelは有限集合に限定し、event ID、request ID、raw URL、user inputを使わない。
-- Local quality、security、Helm、kind、rollout、observability、incident contractはMake targetから再現できる。
+## 障害時の動作
 
-## Non-guarantees
+- downstreamのHTTP 5xx、timeout、connection failureはbounded backoffとjitterでretryする
+- retry上限またはnon-retryable failureはdead-letterへ移す
+- workerがside effect後・ack前に停止すると、pending messageを別workerがclaimする
+- 配送はat-least-once。downstreamはevent IDを重複排除キーとして扱う必要がある
+- Redisへ永続化できない場合、APIは`202 Accepted`を返さずreadinessをfalseにする
 
-- Exactly-once deliveryではない。Side effect後・ack前の停止では同じevent IDを再配送し得る。
-- Downstream側のevent-ID deduplication実装は利用側の責務である。
-- Single Redisとsingle-node kindにHAやautomatic failoverはない。
-- Authentication、multi-tenant authorization、NetworkPolicy、autoscaling、distributed tracingは実装していない。
-- External downstream、long-running load、multi-zone、production trafficは未検証である。
-- Alertmanager notification destinationとon-callは構築していない。
+## 検証済みの範囲
 
-全項目は[Limitations](docs/LIMITATIONS.md)を正本とする。
+- quality、security、Helm／Kubernetes、文書contractは`make verify`で機械検証する
+- Compose、kind delivery and recovery E2E、rolling update／rollback、observability、incident drillを再現する
+- GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eの成功を確認済み
+- v0.1.0のtagとGitHub Releaseは公開済み
 
-## Local Compose demo
+これはcloud production、実在する外部downstream、multi-node／multi-zone、長時間負荷、本番traffic、30日SLO達成の実績ではない。制約の正本は[制約](docs/LIMITATIONS.md)に置く。
 
-Serviceを起動したまま個別contractを確認する場合は次を使う。
+## Quick start
+
+前提はDocker daemon、Python、Make。固定tool versionとresource条件は[toolchain.toml](toolchain.toml)を参照する。
 
 ```bash
 bash scripts/init.sh
+make demo-smoke
+```
+
+`make demo-smoke`はCompose image build、service health、event受付、非同期配送、status、metrics、project専用resourceのcleanupを確認する。payloadやcredentialを出力しない。
+
+## 設計上の保証
+
+- Redisへeventと初期statusを永続化できた場合だけ`202 Accepted`を返す
+- 同じ`Idempotency-Key`と同じrequestは同じevent IDへ収束する
+- 成功時だけackし、未ack messageはpending recoveryの対象になる
+- payload、`Idempotency-Key`生値、credentialをlogやmetric labelへ出さない
+- metrics labelを有限集合に限定し、event IDやraw URLを使わない
+
+## 保証しないこと・制約
+
+- Exactly-once deliveryは提供しない
+- Redis HA、automatic failover、backup、restoreは提供しない
+- authentication、tenant isolation、NetworkPolicy、autoscaling、distributed tracingは実装しない
+- Alertmanager notification destination、on-call、production Alertmanagerは構築していない
+
+制約の一覧と証拠の解釈は[制約](docs/LIMITATIONS.md)を参照する。
+
+## Docker Compose
+
+```bash
 make compose-up
 make smoke
 make e2e-local
 make compose-down
 ```
 
-`make smoke`は202受付とdelivered status、`make e2e-local`はidempotency、retry、dead-letter、pending recoveryを確認する。途中で失敗した場合も`make compose-down`でHooklane Compose projectだけをcleanupする。Event payloadはtest outputへ表示しない。
+`make smoke`は受付と配送、`make e2e-local`はidempotency、retry、dead-letter、pending recoveryを確認する。`make compose-down`はHooklane Compose projectのcontainer、network、volumeだけを削除する。
 
-## kind and Helm demo
-
-正常配送、idempotency、retry、worker pending recovery、status API、Prometheus targetを一度に検証する。
-
-```bash
-make e2e-kind
-```
-
-Targetはproject専用clusterがなければ作成し、local imageをbuild/loadし、Helm releaseとobservabilityをdeployする。Helm testとE2E完了後、自分で作成したclusterだけをcleanupする。
-
-Application chartだけを段階確認する場合は次を使う。
+## kind / Helm
 
 ```bash
 make cluster-up
@@ -105,9 +97,9 @@ make chart-smoke
 make cluster-down
 ```
 
-## Observability
+`make deploy`はlocal image buildとkind loadを使い、external registryへpushしない。`make e2e-kind`は正常配送、idempotency、retry、pending recovery、status参照、cleanupをまとめて確認する。
 
-Prometheus、Grafana、application scrape、SLI dashboard、alert ruleを検証する。
+## 監視
 
 ```bash
 make observability-up
@@ -115,11 +107,9 @@ make observability-smoke
 make observability-down
 ```
 
-DashboardにはAPI rate/error/latency、enqueue、queue depth、oldest age、delivery、retry、dead-letter、pending、Redis error、API replicas、worker in-flightを表示する。SLI targetとPromQLは[SLO](docs/SLO.md)、alert対応は[Operations](docs/OPERATIONS.md#alert-and-runbook-index)を参照する。OpenTelemetry tracesとdistributed tracingは対象外である。
+Prometheus target、application metrics、Grafana provisioning、SLI query、alert rule、障害後の復旧を確認する。metric、alert、Runbookの対応は[SLO](docs/SLO.md)と[運用](docs/OPERATIONS.md)を参照する。
 
-## Rolling update and rollback
-
-API rolling strategy、継続request、worker graceful shutdown、intentional bad release、Helm rollback、復旧後deliveryを再現する。
+## rolling update / rollback
 
 ```bash
 make cluster-up
@@ -128,19 +118,17 @@ make rollout-smoke
 make cluster-down
 ```
 
-Bad releaseはlocal cluster内だけで注入し、normal revisionへ復旧してからcleanupする。Irreversible database migrationは対象外である。
+`make rollout-smoke`はAPIのrolling update、worker drain、意図的なbad releaseの検知、Helm rollback、復旧後の配送を確認する。
 
-## Incident drills
-
-Downstream 5xx、Redis outage、worker stopを順に注入し、metrics、alerts、structured logs、Runbooks、recovery、accepted event lossを確認する。
+## incident drill
 
 ```bash
 make incident-smoke
 ```
 
-Aggregateはclusterがなければ作成し、自分で作成したclusterだけをcleanupする。各receiptとblameless postmortemは[incident index](docs/OPERATIONS.md#incident-and-postmortem-index)にある。
+downstream 5xx、Redis outage、worker stopを順に注入し、signal、Runbook、復旧、accepted eventの整合を確認する。個別の記録は[運用](docs/OPERATIONS.md#incidentとpostmortemの一覧)から辿れる。
 
-## Quality and security
+## quality / security
 
 ```bash
 make lint
@@ -150,54 +138,33 @@ make security
 make chart-validate
 make docs-check
 make verify
-```
-
-`make verify`はsyntax/config、Ruff、strict mypy、unit/integration、Gitleaks、OSV-Scanner、Trivy filesystem/image、Helm/schema/Kubernetes policy、documentation contractをfail-closedで集約する。Scanner findingを自動ignoreせず、tool failureをfinding 0として扱わない。Policyと残存riskは[Security](docs/SECURITY.md)を参照する。
-
-## Clean-room verification
-
-Full local verificationは重い処理で、Docker image build、scanner、複数のkind smokeとincident drillを含む。実行時間はhost resourceとimage/cache状態で変わる。
-
-```bash
 make clean-room
 ```
 
-Targetはlocal HEADをhardlinkなしでtemporary cloneする。Commit前のfinal candidateを検証する場合は、明示stage済み変更だけをcloneへ適用し、unstaged/untracked fileがあればfailする。Sourceの`.venv`、cache、secret設定、untracked artifactをcopyせず、temporary clone内でinit、verify、demo、kind E2E、rollout、observability、incident smokeを実行し、runtimeとtemporary directoryをcleanupする。Remoteへpushまたはcloneしない。
+`make verify`はRuff、strict mypy、unit／integration test、Gitleaks、OSV-Scanner、Trivy、Helm／schema／Kubernetes、文書contractをfail-closedで集約する。`make clean-room`はtracked candidateから隔離した環境を作り、主要runtime検証とcleanupを再実行する。
 
-## CI
+## GitHub Actions
 
-[`ci.yml`](.github/workflows/ci.yml)はpull requestとmain branchでlocalの`make verify`を実行し、その成功後に`make e2e-kind`を独立jobで実行する。Repository permissionはread-only、third-party actionsはfull commit SHA pin、secret参照と`pull_request_target`はない。Image push、release、deployは行わない。
+[ci.yml](.github/workflows/ci.yml)はpull requestとmainで`make verify`を実行し、その成功後に`make e2e-kind`を実行する。quality / security / chart gates、kind delivery and recovery E2E、cleanupはGitHub hosted Actionsで成功済み。成功時のfailure diagnostics uploadはskipとなる。
 
-Workflowはlocal static contractで検証済みだが、GitHub hosted Actions上の実行は未確認である。Remote repository情報が確定していないためCI badgeは掲載しない。
+workflowはread-only permission、full commit SHAで固定したaction、secretを要求しないtriggerを使う。Hosted CIの成功はcloud productionや本番trafficの実績を意味しない。
 
-## Goal Loop development runner
+## 詳細文書
 
-Repository内のGoal Loopを再開する場合は、外部runnerが`docs/features.json`から未完了featureを1件だけ選び、そのfeature専用の新しいagent processを起動する。
+- [アーキテクチャ](docs/ARCHITECTURE.md)
+- [運用とRunbook一覧](docs/OPERATIONS.md)
+- [security boundary](docs/SECURITY.md)
+- [制約](docs/LIMITATIONS.md)
+- [SLI / SLO設計目標](docs/SLO.md)
+- [再現手順](docs/DEMO.md)
+- [検証根拠](docs/RELEASE_EVIDENCE.md)
+- [開発と検証方法](docs/DEVELOPMENT.md)
+- [v0.1.1 release notes](docs/releases/v0.1.1.md)
+- [ADR](docs/adr/0001-redis-streams-at-least-once.md)
 
-```bash
-bash scripts/loop.sh codex 1 --status
-bash scripts/loop.sh codex 1 --dry-run
-bash scripts/loop.sh codex 1 --iteration-timeout 1800
-```
+## cleanup
 
-各agent processは1 featureだけを扱い、次のfeatureは外部runnerが別processで開始する。Feature別attempt上限、wall-clock timeout、timeout receipt、process group終了をrunnerが管理する。Write iterationはmain agentだけで実行し、subagent、agent delegation、`/goal`は既定で使わない。Python 3がない環境では安全性の低いshell fallbackへ縮退せずfail-closedする。Runner契約は`tests/test_loop_runner.py`と`tests/test_goal_loop_safety.py`で検証する。
-
-## Documentation
-
-- [Architecture and data flow](docs/ARCHITECTURE.md)
-- [Operations and Runbook index](docs/OPERATIONS.md)
-- [Security model](docs/SECURITY.md)
-- [Limitations](docs/LIMITATIONS.md)
-- [SLI / SLO design targets](docs/SLO.md)
-- [Reproducible demonstration](docs/DEMO.md)
-- [ADRs](docs/adr/0001-redis-streams-at-least-once.md)
-- [Incident records and postmortem](docs/incidents/postmortem-worker-stop.md)
-- [Release evidence](docs/RELEASE_EVIDENCE.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
-
-## Cleanup
-
-実行したtopologyに対応するproject-specific targetだけを使う。
+実行した構成に対応するtargetだけを使う。
 
 ```bash
 make compose-down
@@ -206,16 +173,14 @@ make cluster-down
 make runtime-hygiene-check
 ```
 
-Unrelated container、network、volume、clusterを削除しない。Failure diagnosticsが作られた場合は内容にpayloadやcredentialがないことを確認し、今回生成したartifactだけをcleanupする。
+無関係なcontainer、network、volume、clusterには触れない。
 
-## Project status
+## 配布範囲
 
-Planned local feature contractは[`docs/features.json`](docs/features.json)、公開可能なtechnical acceptance summaryは[Release evidence](docs/RELEASE_EVIDENCE.md)を正本とする。Implementation、tests、security gates、Helm/kind、observability、rollout、incident drills、core documentation、clean-room verificationを同じrepositoryで管理する。
+このrepositoryはsource-onlyで配布する。source code、Dockerfile、Helm chart、configuration、documentation、検証手順を含む。prebuilt container image、container registry、release artifact、binary distributionは配布しない。
 
-実証済みなのはlocal mechanical gatesとproject-specific runtime smokeである。GitHub hosted Actions、cloud deployment、external downstream、本番traffic、30日SLO attainmentは未確認である。
+application imageはDockerfileからlocal buildする。Python dependency、base image、Redis、Prometheus、Grafana、validation toolには各上流のlicenseとnoticeが適用される。
 
-## License and third-party notices
+## License / third-party notices
 
-Hooklaneのsourceは[MIT License](LICENSE)で提供する。Copyright noticeは`Copyright (c) 2026 Hooklane contributors`である。
-
-Third-party softwareの範囲と確認方法は[Third-party notices](THIRD_PARTY_NOTICES.md)に記録する。Python dependencyは`requirements.lock`、container/tool imageとversionは`container-policy.json`、`security-policy.json`、`toolchain.toml`を正本とする。Third-party sourceまたはbinaryはvendoredせず、generated lock fileとprovisioned dashboard/ruleはsource controlしている。Prebuilt imageは配布しない。
+Hooklaneのsourceは[MIT License](LICENSE)で提供する。第三者softwareの範囲、version、確認方法は[third-party notices](THIRD_PARTY_NOTICES.md)を参照する。Python dependencyは[requirements.lock](requirements.lock)、imageとtoolの固定値は`container-policy.json`、`security-policy.json`、`toolchain.toml`を正本とする。

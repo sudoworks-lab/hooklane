@@ -1,86 +1,84 @@
-# Hooklane limitations
+# Hooklaneの制約
 
-## Intended use
+## 対象範囲
 
-Hooklaneはlocal / portfolio-scale demonstrationとして、HTTP acceptance、Redis Streams queue、at-least-once worker、observability、failure recoveryを再現するreference implementationである。Cloud production environmentは構築しておらず、non-production-readyである。
+Hooklaneは、Webhook受付、Redis Streams queue、at-least-once配送、observability、障害からの回復をローカル構成で確認できるWebhook配送基盤。短時間の検証結果はrepository contractの実証であり、可用性、耐久性、security、performanceを本番条件で証明するものではない。
 
-Short-lived local receiptsは実装contractの検証結果であり、可用性、耐久性、security、performanceを本番条件で証明するものではない。
+## 可用性と構成
 
-## Availability and topology
+- kindはsingle-node。multi-nodeとmulti-zoneを検証していない
+- Redisはsingle instance。Redis HA、replication、automatic failoverを実装していない
+- HelmのRedis PVCは同一cluster内のPod再作成に耐えるだけで、node loss、cluster deletion、backup、restoreを保証しない
+- worker、mock sink、Redisは既定でsingle replica
+- autoscaling、capacity-based scaling、multi-cluster traffic routingを実装していない
+- long-running load test、soak test、chaos testを実施していない
 
-- kindはsingle nodeであり、multi-nodeとmulti-zoneを検証していない。
-- Redisはsingle instanceで、Redis HA、replication、automatic failoverを実装していない。
-- HelmのRedis PVCは同一cluster内のPod recreationに耐えるだけで、node loss、cluster deletion、backup、restoreを保証しない。
-- Workerは既定single replicaである。Pod replacement中の処理継続はpending recoveryに依存する。
-- Mock sinkもsingle replicaで、外部downstreamのavailabilityを表さない。
-- Autoscaling、capacity-based scaling、multi-cluster traffic routingを実装していない。
-- Long-running load test、soak test、chaos testを実施していない。
+## 配送の性質
 
-## Delivery semantics
+- 配送はat-least-onceであり、exactly-onceではない
+- downstream side effect後かつRedis ack前のworker停止ではduplicate deliveryが起こり得る
+- downstreamはevent IDを重複排除キーとして扱う必要がある。実在する外部downstreamでこのcontractは検証していない
+- retry、backoff、jitter、dead-letterはbounded policy。個別downstreamのrate limitやbusiness retry policyを自動調整しない
+- dead-letterの一覧、replay、approval、bulk remediationを行うoperator interfaceは実装していない
+- idempotency mapping、event status、stream、dead-letterにTTLやretention rotationを設定していない
 
-- Deliveryはat-least-onceであり、exactly-onceではない。
-- Downstream side effect後かつRedis ack前のworker停止ではduplicate deliveryが発生し得る。
-- Downstreamはevent IDをdeduplication keyとして扱う必要がある。External downstreamでこのcontractを検証していない。
-- Retry、backoff、jitter、dead-letterはbounded local policyであり、個別downstreamのrate limitやbusiness retry policyを自動調整しない。
-- Dead-letterのlist、replay、approval、bulk remediationを行うoperator interfaceは実装していない。
-- Idempotency mapping、event status、stream、dead-letterにTTLやretention rotationを設定していない。
+## 本番とtrafficの実証範囲
 
-## Production and traffic evidence
+- cloud production deploymentと本番trafficは未検証
+- 実在する外部downstreamのnetwork、TLS、rate limit、authentication、partial failureは未検証
+- performance targetはsingle-nodeのcontract検証用であり、capacity planではない
+- [SLO](SLO.md)はrolling 30日の設計目標であり、30日SLO達成実績ではない
+- ローカルPrometheusの短時間queryやincident drillを30日SLO実績として扱わない
+- irreversible database migrationはrolling updateとrollback testの対象外
 
-- Cloud production deploymentと本番trafficは未検証である。
-- External downstreamのnetwork、TLS、rate limit、authentication、partial failureを未検証である。
-- Performance targetはsingle-node local environmentのcontract検証用で、capacity planではない。
-- [SLO](SLO.md)はrolling 30日の設計targetであり、30日SLO達成実績ではない。
-- Local Prometheusの短時間queryやincident drillを30日SLO実績として扱わない。
-- Irreversible database migrationはrolling updateとrollback testの対象外である。
+## 監視とincident response
 
-## Observability and incident response
+- Alertmanager notification destination、paging、on-call rotation、escalation organizationを構築していない
+- Prometheus retentionはローカル検証用の短期間。long-term metrics storeを持たない
+- Grafana stateはephemeral。dashboard JSONをGitでprovisionする以外のuser stateを保持しない
+- OpenTelemetry traces、Tempo、distributed tracingは対象外
+- structured logとevent IDで相関するが、cross-system trace contextを保証しない
+- incident drillはproject内mock sink、Redis Pod、worker Podを対象にした安全なローカル障害注入だけを扱う
 
-- Alertmanager notification destination、paging、on-call rotation、escalation organizationを構築していない。
-- Prometheus retentionはlocal検証用の短期間で、long-term metrics storeを持たない。
-- Grafana stateはephemeralで、dashboard JSONをGitでprovisionする以外のuser stateを保持しない。
-- OpenTelemetry traces、Tempo、distributed tracingはnon-goalである。
-- Structured logとevent IDで相関するが、cross-system trace contextを保証しない。
-- Incident drillsはproject内mock sink、Redis Pod、worker Podを対象にした安全なlocal injectionだけである。
+## securityとnetwork
 
-## Security and networking
+- API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない
+- Kubernetes NetworkPolicy、ingress TLS、egress firewallは対象外
+- Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない
+- external secret manager、key rotation、encryption-at-rest、image signing、SBOM attestationを実装していない
+- Redisにapplication payloadを保存するため、本番導入前にdata classification、retention、backup、encryptionを設計する必要がある
+- scanner databaseの更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない
 
-- API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない。
-- Kubernetes NetworkPolicy、ingress TLS、egress firewallはnon-goalである。
-- Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない。
-- External secret manager、key rotation、encryption-at-rest、image signing、SBOM attestationを実装していない。
-- Single Redisへapplication payloadを保存するため、本番利用前にdata classification、retention、backup、encryptionを設計する必要がある。
-- Scanner database更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない。
+security controlと残存riskの詳細は[security](SECURITY.md)を参照する。
 
-Security controlと残存riskの詳細は[Security](SECURITY.md)を参照する。
+## CIと公開
 
-## CI and release
+- GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを実行済み
+- GitHub Actionsは現在の公開mainを自動検証するが、cloud productionや本番trafficは検証しない
+- v0.1.0のtagとGitHub Releaseは公開済み
+- source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
+- prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildする
+- image registry push、release publishing、tag、deployment automationは実装していない
+- generated dependency lockとpinned imageは再現性を高めるが、reproducible-build attestationを提供しない
 
-- GitHub Actions workflowはlocal static contractを検証済みだが、GitHub hosted Actions上では実行していない。
-- Repositoryはsource code、Dockerfile、Helm chart、configuration、documentation、検証手順だけを公開する。
-- Prebuilt container image、container registry、release artifact、binary distributionは提供していない。利用者がapplication imageをlocal buildする。
-- Runtime dependencyとupstream imageには各上流licenseとnoticeが適用される。Version正本と確認範囲は[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)に記録する。
-- Image registry push、release publishing、tag、deployment automationを実装していない。
-- Remote repository ownerとpublic reporting channelは確定していない。
-- Generated dependency lockとpinned imagesは再現性を高めるが、reproducible-build attestationを提供しない。
-- Source-only公開はproduction readinessを意味しない。
+versionと第三者softwareの確認範囲は[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)を参照する。
 
-## Persistence by environment
+## 環境ごとの保持範囲
 
-| Environment | Persistence scope | Not provided |
+| 環境 | 保持範囲 | 提供しないもの |
 |---|---|---|
-| Docker Compose | Redisはlocal demo中だけのephemeral state | restart/cleanupを越えるdurability、backup、HA |
-| kind / Helm | Single Redis PVCがPod recreationを越えて保持 | node/cluster loss、replication、automatic failover |
-| Prometheus / Grafana | Cluster lifetime内のephemeral storage | long-term SLO store、dashboard user-state backup |
+| Docker Compose | Redisはローカル実行中だけのephemeral state | restart／cleanupを越えるdurability、backup、HA |
+| kind / Helm | single Redis PVCがPod再作成を越えて保持 | node／cluster loss、replication、automatic failover |
+| Prometheus / Grafana | cluster lifetime内のephemeral storage | long-term SLO store、dashboard user-state backup |
 
-## Safe interpretation of evidence
+## 検証結果の読み方
 
-`make verify`、`make e2e-kind`、`make rollout-smoke`、`make observability-smoke`、`make incident-smoke`のpassは、それぞれが定義するlocal contractをその実行時点で満たしたことを示す。次を意味しない。
+`make verify`、`make e2e-kind`、`make rollout-smoke`、`make observability-smoke`、`make incident-smoke`のpassは、それぞれが定義するローカルcontractを実行時点で満たしたことを示す。次を意味しない。
 
-- Production availabilityまたはsecurity certification
+- production availabilityまたはsecurity certification
 - 30日SLO attainment
-- Unlimited throughputやlong-running stability
-- Multi-node、multi-zone、external downstream compatibility
-- Exactly-once deliveryまたはduplicate side effect不在
+- unlimited throughputやlong-running stability
+- multi-node、multi-zone、実在する外部downstreamとの互換性
+- exactly-once deliveryまたはduplicate side effect不在
 
-実行方法とcleanupは[Operations](OPERATIONS.md)、設計境界は[Architecture](ARCHITECTURE.md)を正本とする。
+実行手順は[運用](OPERATIONS.md)、設計境界は[アーキテクチャ](ARCHITECTURE.md)、実証済みの事実は[検証根拠](RELEASE_EVIDENCE.md)を正本とする。

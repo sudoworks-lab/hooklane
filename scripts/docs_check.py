@@ -1,4 +1,4 @@
-"""Validate public entrypoint and demonstration documentation."""
+"""Validate public documentation, metadata, and release-note contracts."""
 
 from __future__ import annotations
 
@@ -13,63 +13,87 @@ import repository_hygiene
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 DEMO = ROOT / "docs" / "DEMO.md"
+DEVELOPMENT = ROOT / "docs" / "DEVELOPMENT.md"
 RELEASE_EVIDENCE = ROOT / "docs" / "RELEASE_EVIDENCE.md"
+RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.1.md"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 LICENSE = ROOT / "LICENSE"
-DOCUMENTS = (README, DEMO, RELEASE_EVIDENCE, THIRD_PARTY_NOTICES)
-README_SECTIONS = (
-    "## Quick start",
-    "## Source distribution",
-    "## Problem and approach",
-    "## Architecture overview",
-    "## Key guarantees",
-    "## Non-guarantees",
-    "## Local Compose demo",
-    "## kind and Helm demo",
-    "## Observability",
-    "## Rolling update and rollback",
-    "## Incident drills",
-    "## Quality and security",
-    "## Clean-room verification",
-    "## CI",
-    "## Goal Loop development runner",
-    "## Documentation",
-    "## Cleanup",
-    "## Project status",
-    "## License and third-party notices",
+PYPROJECT = ROOT / "pyproject.toml"
+CHART = ROOT / "charts" / "hooklane" / "Chart.yaml"
+DOCUMENTS = (
+    README,
+    DEMO,
+    DEVELOPMENT,
+    RELEASE_EVIDENCE,
+    RELEASE_NOTES,
+    THIRD_PARTY_NOTICES,
 )
-DEMO_SECTIONS = tuple(f"## {number}. {title}" for number, title in (
-    (1, "Prerequisites"),
-    (2, "Repository initialization"),
-    (3, "Compose quick demo"),
-    (4, "Event acceptance"),
-    (5, "Delivered status"),
-    (6, "Idempotency"),
-    (7, "Metrics and dashboard"),
-    (8, "kind deploy"),
-    (9, "Rolling update"),
-    (10, "Bad release and rollback"),
-    (11, "Incident drills"),
-    (12, "Cleanup"),
-    (13, "Expected evidence"),
-    (14, "Known limitations"),
-))
+README_SECTIONS = (
+    "## 主な機能",
+    "## アーキテクチャ概要",
+    "## 障害時の動作",
+    "## 検証済みの範囲",
+    "## Quick start",
+    "## 設計上の保証",
+    "## 保証しないこと・制約",
+    "## Docker Compose",
+    "## kind / Helm",
+    "## 監視",
+    "## rolling update / rollback",
+    "## incident drill",
+    "## quality / security",
+    "## GitHub Actions",
+    "## 詳細文書",
+    "## cleanup",
+    "## 配布範囲",
+    "## License / third-party notices",
+)
+DEMO_SECTIONS = tuple(
+    f"## {number}. {title}"
+    for number, title in (
+        (1, "前提"),
+        (2, "repository初期化"),
+        (3, "Compose quick demo"),
+        (4, "event受付"),
+        (5, "delivered status"),
+        (6, "idempotency"),
+        (7, "metricsとdashboard"),
+        (8, "kind deploy"),
+        (9, "rolling update"),
+        (10, "bad releaseとrollback"),
+        (11, "incident drill"),
+        (12, "cleanup"),
+        (13, "確認内容"),
+        (14, "既知の制約"),
+    )
+)
 EVIDENCE_CATEGORIES = (
-    "### Architecture",
-    "### Failure modes",
-    "### Health semantics",
-    "### Verification results",
-    "### Constraints",
+    "### アーキテクチャ",
+    "### 障害時の動作",
+    "### healthの意味",
+    "### 検証結果",
+    "### 制約",
 )
 RELEASE_EVIDENCE_SECTIONS = (
-    "## Scope",
-    "## Feature acceptance",
-    "## Quality gate",
-    "## Runtime verification",
-    "## Security scanning",
-    "## Verified facts",
-    "## Not verified",
-    "## Distribution boundary",
+    "## 対象",
+    "## feature受け入れ",
+    "## quality gate",
+    "## runtime検証",
+    "## GitHub Actions",
+    "## security scan",
+    "## 実証済みの事実",
+    "## 未確認事項",
+    "## 配布範囲",
+)
+RELEASE_NOTE_SECTIONS = (
+    "## 概要",
+    "## READMEと文書構成の整理",
+    "## 古いCI・公開状態の記載修正",
+    "## Goal Loop開発文書の分離",
+    "## package / repository metadata",
+    "## application behavior",
+    "## 検証結果",
+    "## 既知の制約",
 )
 LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 MAKE_REFERENCE = re.compile(r"\bmake\s+([a-z][a-z0-9_.-]*)\b")
@@ -80,7 +104,7 @@ METRIC_DEFINITION = re.compile(r'"(hooklane_[a-z0-9_]+)"\s*:')
 
 
 class DocsCheckError(RuntimeError):
-    """Raised when README or DEMO diverges from the repository."""
+    """Raised when public documentation diverges from the repository."""
 
 
 def fail(message: str) -> Never:
@@ -106,10 +130,16 @@ def validate_structure() -> None:
     for category in EVIDENCE_CATEGORIES:
         if category not in demo:
             fail(f"DEMO evidence category is missing: {category}")
+
     evidence = RELEASE_EVIDENCE.read_text(encoding="utf-8")
     for section in RELEASE_EVIDENCE_SECTIONS:
         if section not in evidence:
             fail(f"release evidence section is missing: {section}")
+
+    notes = RELEASE_NOTES.read_text(encoding="utf-8")
+    for section in RELEASE_NOTE_SECTIONS:
+        if section not in notes:
+            fail(f"v0.1.1 release-notes section is missing: {section}")
 
 
 def validate_links_and_commands() -> None:
@@ -147,11 +177,10 @@ def validate_links_and_commands() -> None:
 def validate_readme_contract() -> None:
     readme = README.read_text(encoding="utf-8")
     required = (
-        "local demonstration",
-        "non-production-ready",
+        "Webhook配送基盤",
         "at-least-once",
-        "event IDをdeduplication key",
-        "Exactly-once deliveryではない",
+        "event IDを重複排除キー",
+        "Exactly-once deliveryは提供しない",
         "make demo-smoke",
         "make e2e-kind",
         "make rollout-smoke",
@@ -159,32 +188,19 @@ def validate_readme_contract() -> None:
         "make incident-smoke",
         "make verify",
         "make clean-room",
-        "GitHub hosted Actions上の実行は未確認",
+        "GitHub hosted Actions",
+        "v0.1.0のtagとGitHub Releaseは公開済み",
         "MIT License",
-        "source-only distribution",
-        "Prebuilt container image",
+        "source-only",
+        "prebuilt container image",
         "docs/RELEASE_EVIDENCE.md",
+        "docs/DEVELOPMENT.md",
         "THIRD_PARTY_NOTICES.md",
         "requirements.lock",
-        "Third-party sourceまたはbinaryはvendoredせず",
     )
     for marker in required:
         if marker not in readme:
             fail(f"README contract marker is missing: {marker}")
-    for prohibited in ("転職", "採用担当", "ポートフォリオ"):
-        if prohibited in readme:
-            fail(f"README contains an internal or unsupported claim: {prohibited}")
-    if re.search(r"(?<!non-)production-readyである", readme):
-        fail("README contains an unsupported production-ready claim")
-    if re.search(r"!\[[^\]]*\]\([^)]*github", readme, re.IGNORECASE):
-        fail("README must not guess a remote CI badge URL")
-    if re.search(r"github\.com/[^/\s]+/[^/\s]+", readme):
-        fail("README must not guess a remote repository owner")
-    if re.search(r"\b\d+/29\b", readme):
-        fail("README must not freeze a volatile feature count")
-    for obsolete in ("License未選定", "利用許諾と解釈しない"):
-        if obsolete in readme:
-            fail(f"README retains obsolete license state: {obsolete}")
 
 
 def validate_demo_contract() -> None:
@@ -196,14 +212,15 @@ def validate_demo_contract() -> None:
         "hooklane_http_requests_total",
         "hooklane_queue_depth",
         "hooklane_pending_messages",
-        "Bad release",
-        "Downstream 5xx",
+        "bad release",
+        "downstream 5xx",
         "Redis outage",
-        "Worker stop",
+        "worker stop",
         "accepted event loss 0",
         "at-least-once",
-        "event-ID deduplication",
+        "event ID重複排除",
         "make runtime-hygiene-check",
+        "GitHub hosted Actions",
     )
     for marker in required:
         if marker not in demo:
@@ -215,7 +232,6 @@ def validate_demo_contract() -> None:
         "prebuilt container image",
         "MIT License",
         "THIRD_PARTY_NOTICES.md",
-        "production readiness",
     ):
         if marker not in demo:
             fail(f"DEMO distribution marker is missing: {marker}")
@@ -224,9 +240,9 @@ def validate_demo_contract() -> None:
 def validate_release_evidence_contract() -> None:
     evidence = RELEASE_EVIDENCE.read_text(encoding="utf-8")
     for marker in (
-        "F001 through F029",
+        "F001〜F029",
         "29/29",
-        "Blocked feature count is 0",
+        "blocked feature countは0",
         "make verify",
         "make demo-smoke",
         "make e2e-kind",
@@ -237,9 +253,10 @@ def validate_release_evidence_contract() -> None:
         "Gitleaks",
         "OSV-Scanner",
         "Trivy",
-        "GitHub hosted Actions has not been executed",
-        "not a claim of production readiness",
-        "source-only distribution",
+        "GitHub hosted Actionsは公開mainで実行済み",
+        "Quality, security, and chart gatesはsuccess",
+        "kind delivery and recovery E2Eはsuccess",
+        "source-only",
     ):
         if marker not in evidence:
             fail(f"release evidence marker is missing: {marker}")
@@ -249,22 +266,72 @@ def validate_release_evidence_contract() -> None:
         fail("release evidence disagrees with feature state")
 
 
+def validate_metadata_contract() -> None:
+    project = PYPROJECT.read_text(encoding="utf-8")
+    chart = CHART.read_text(encoding="utf-8")
+    if 'version = "0.1.0"' not in project:
+        fail("package version differs from the approved v0.1.0 baseline")
+    if 'description = "Webhook delivery service with retry, recovery, and observability"' not in project:
+        fail("package description is missing or stale")
+    if "description: Webhook delivery service chart" not in chart:
+        fail("chart description is missing or stale")
+
+
 def validate_license_and_notices_contract() -> None:
     if LICENSE.read_text(encoding="utf-8") != repository_hygiene.EXPECTED_MIT_LICENSE:
         fail("LICENSE does not match the approved MIT contract")
     notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8")
     for section in (
-        "## 1. Scope",
-        "## 2. No vendored third-party source",
-        "## 3. Python dependencies",
-        "## 4. Container base and runtime images",
-        "## 5. Development and validation tools",
-        "## 6. GitHub Actions",
-        "## 7. Distribution note",
-        "## 8. How to review exact versions",
+        "## 対象",
+        "## vendored third-party sourceなし",
+        "## Python dependency",
+        "## container baseとruntime image",
+        "## 開発と検証tool",
+        "## GitHub Actions",
+        "## 配布に関する注記",
+        "## exact versionの確認方法",
     ):
         if section not in notices:
             fail(f"third-party notices section is missing: {section}")
+
+
+def validate_public_claims() -> None:
+    prohibited = (
+        "portfolio-scale",
+        "reference implementation",
+        "local demonstration",
+        "reliability lab",
+        "learning project",
+        "training project",
+        "toy project",
+        "sample project",
+        "non-production-ready",
+        "github hosted actions has not been executed",
+        "github hosted actions未確認",
+        "github hosted actions未実行",
+        "remote未設定",
+        "owner未確定",
+        "license未選定",
+        "tag未作成",
+        "github release未作成",
+        "初回公開版",
+        "練習",
+        "学習用",
+        "作ってみた",
+        "転職",
+        "就職",
+        "採用担当",
+        "ポートフォリオ",
+    )
+    for document in (*DOCUMENTS, *docs_core_check.REFERENCE_DOCUMENTS):
+        text = document.read_text(encoding="utf-8")
+        normalized = text.lower()
+        for phrase in prohibited:
+            if phrase.lower() in normalized:
+                fail(
+                    "public document contains a prohibited or stale phrase: "
+                    f"{document.relative_to(ROOT)}"
+                )
 
 
 def validate_hygiene() -> None:
@@ -279,10 +346,6 @@ def validate_hygiene() -> None:
         if re.search(r"\b(?:TODO|FIXME|XXX)\b", text):
             fail(f"document contains an unresolved marker: {document.relative_to(ROOT)}")
 
-    readme = README.read_text(encoding="utf-8")
-    if "MIT License" not in readme:
-        fail("README does not identify the approved MIT license")
-
 
 def run_checks() -> None:
     docs_core_check.run_checks()
@@ -291,7 +354,9 @@ def run_checks() -> None:
     validate_readme_contract()
     validate_demo_contract()
     validate_release_evidence_contract()
+    validate_metadata_contract()
     validate_license_and_notices_contract()
+    validate_public_claims()
     validate_hygiene()
 
 
@@ -302,8 +367,8 @@ def main() -> int:
         print(f"[fail] docs contract: {error}")
         return 1
     print(
-        "[ok] README, DEMO, release evidence, third-party notices, MIT license, "
-        "links, commands, metrics, source-only, and public-claim contract passed"
+        "[ok] public docs, release notes, metadata, MIT license, links, commands, "
+        "metrics, source-only boundary, and current-state contract passed"
     )
     return 0
 

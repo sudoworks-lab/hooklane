@@ -1,15 +1,15 @@
-# Hooklane SLI / SLO設計target
+# Hooklane SLI / SLO設計目標
 
 ## この文書の位置づけ
 
-ここに記載する数値は、Hooklaneの設計とalertを整合させるためのSLO targetである。本番SLOの達成実績ではなく、単一nodeのlocal kind環境で行う短時間検証を30日間のSLO実績として扱わない。外部公開、本番traffic、複数zone、Redis HAを測定していない。
+ここに記載する数値は、Hooklaneの設計とalertを整合させるためのSLO設計目標。本番SLOの達成実績ではなく、単一nodeのローカルkind環境で行う短時間検証を30日間のSLO実績として扱わない。外部公開、本番traffic、複数zone、Redis HAを測定していない。
 
 - 測定windowの設計値はrolling 30日とする。
-- local kindのPrometheus retentionは2時間であり、30日queryの実績値を生成しない。
+- ローカルkindのPrometheus retentionは2時間であり、30日queryの実績値を生成しない。
 - F018のfailure injectionはalert pathの検証であり、error budget消費実績ではない。
 - dashboard正本は[`Hooklane SLI and Operations`](../charts/hooklane/files/grafana/dashboards/hooklane-overview.json)、PromQL対応表は[`observability/sli-promql.json`](../observability/sli-promql.json)とする。
 
-設計boundaryと運用方法は[Architecture](ARCHITECTURE.md)、[Operations](OPERATIONS.md)、[Security](SECURITY.md)、[Limitations](LIMITATIONS.md)を参照する。
+設計boundaryと運用方法は[アーキテクチャ](ARCHITECTURE.md)、[運用](OPERATIONS.md)、[security](SECURITY.md)、[制約](LIMITATIONS.md)を参照する。
 
 ## API受付可用性
 
@@ -26,7 +26,7 @@ clamp_min(
 
 不正JSON、schema validation failure、必須field不足、未知event IDの参照は利用者入力のinvalid requestであり、API受付可用性の分母へ含めない。同一`Idempotency-Key`を異なる内容へ再利用した409もvalid acceptance attemptではないため除外する。API processの5xx rateは補助signalとして[`HooklaneApiHighErrorRate`](runbooks/HooklaneApiHighErrorRate.md)で監視する。
 
-## API enqueue latency
+## API受付遅延
 
 設計targetは、有効なeventを受け付けて202を返すrequestのp95がrolling 30日で250ms未満であることとする。local dashboardでは短いwindowで傾向だけを表示する。
 
@@ -103,9 +103,9 @@ project内mock sinkの5xx、timeout、connection failure期間も、配送成功
 
 Redis停止またはRedis operation failureによりAPIが有効requestを永続化できない期間はAPI受付可用性へ影響する。対応手順は[`HooklaneRedisOperationFailures`](runbooks/HooklaneRedisOperationFailures.md)を参照する。
 
-## local kind測定と本番実績の違い
+## ローカルkind測定と本番実績の違い
 
-local kindは単一node、単一worker、単一Redis、project内mock sink、短いretentionを使う。次を検証していない。
+ローカルkindは単一node、単一worker、単一Redis、project内mock sink、短いretentionを使う。次を検証していない。
 
 - 複数nodeまたは複数zoneの可用性
 - Redis replication、failover、managed service
@@ -115,7 +115,7 @@ local kindは単一node、単一worker、単一Redis、project内mock sink、短
 
 したがってdashboard screenshotや短時間queryを本番SLO達成の証拠として使用しない。target変更はmetric contract、alert threshold、dashboard、Runbookを同じchangeで見直す。
 
-## AlertとRunbook対応
+## alertとRunbookの対応
 
 | Signal | Alert | Runbook |
 |---|---|---|
@@ -127,6 +127,6 @@ local kindは単一node、単一worker、単一Redis、project内mock sink、短
 | dead-letter | `HooklaneDeadLetterIncreasing` | [`HooklaneDeadLetterIncreasing.md`](runbooks/HooklaneDeadLetterIncreasing.md) |
 | Redis failure | `HooklaneRedisOperationFailures` | [`HooklaneRedisOperationFailures.md`](runbooks/HooklaneRedisOperationFailures.md) |
 
-## Incident drillとの対応
+## incident drillとの対応
 
-設計targetとSLIのfailure modeは、local kind上の[`Downstream 5xx`](incidents/downstream-5xx.md)、[`Redis outage`](incidents/redis-outage.md)、[`Worker stop`](incidents/worker-stop.md)で再現する。3 drillは`make incident-smoke`で集約し、検知、Runbookによる切り分け、復旧、確認可能なaccepted event loss 0を検査する。worker停止時のat-least-once recoveryとduplicate可能性は[`blameless postmortem`](incidents/postmortem-worker-stop.md)へ記録する。これらは短時間のlocal検証receiptであり、本番SLO達成実績ではない。
+設計目標とSLIのfailure modeは、ローカルkind上の[`Downstream 5xx`](incidents/downstream-5xx.md)、[`Redis outage`](incidents/redis-outage.md)、[`Worker stop`](incidents/worker-stop.md)で再現する。3 drillは`make incident-smoke`で集約し、検知、Runbookによる切り分け、復旧、確認可能なaccepted event loss 0を検査する。worker停止時のat-least-once recoveryとduplicate可能性は[`blameless postmortem`](incidents/postmortem-worker-stop.md)へ記録する。これらは短時間のローカル検証receiptであり、本番SLO達成実績ではない。
