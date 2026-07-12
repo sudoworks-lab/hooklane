@@ -24,11 +24,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - name: Check out repository history
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
       - name: Set up pinned Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
         with:
           python-version-file: .python-version
           check-latest: false
@@ -47,11 +47,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository history
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
       - name: Set up pinned Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
         with:
           python-version-file: .python-version
           check-latest: false
@@ -63,7 +63,7 @@ jobs:
         run: make e2e-kind
       - name: Upload sanitized failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: hooklane-kind-e2e-diagnostics
           path: artifacts/kind-e2e-*
