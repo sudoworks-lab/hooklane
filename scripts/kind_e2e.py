@@ -19,6 +19,14 @@ import observability_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 API_ORIGIN = "http://127.0.0.1:18082"
+MOCK_SINK_DEPLOYMENT = "hooklane-mock-sink"
+MOCK_SINK_SERVICE = "hooklane-mock-sink"
+MOCK_SINK_SELECTOR = (
+    f"app.kubernetes.io/instance={kind_runtime.RELEASE},"
+    "app.kubernetes.io/component=mock-sink"
+)
+DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
+POD_TEMPLATE_HASH_LABEL = "pod-template-hash"
 DIAGNOSTIC_FORBIDDEN = re.compile(
     r"payload|idempotency-key|cookie|credential|password|private key|redis://|authorization:",
     flags=re.IGNORECASE,
@@ -155,6 +163,305 @@ def wait_rollout(resource: str, *, timeout: str = "240s") -> None:
     )
 
 
+def object_items(document: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    raw_items = document.get("items")
+    if not isinstance(raw_items, list) or not all(isinstance(item, dict) for item in raw_items):
+        fail(f"{label} list is malformed")
+    return cast(list[dict[str, Any]], raw_items)
+
+
+def pod_ready(pod: dict[str, Any]) -> bool:
+    status = pod.get("status")
+    conditions = status.get("conditions") if isinstance(status, dict) else None
+    return isinstance(conditions, list) and any(
+        isinstance(condition, dict)
+        and condition.get("type") == "Ready"
+        and condition.get("status") == "True"
+        for condition in conditions
+    )
+
+
+def replica_count(mapping: object, key: str) -> int:
+    value = mapping.get(key) if isinstance(mapping, dict) else None
+    return value if isinstance(value, int) else 0
+
+
+def owned_by_deployment(replica_set: dict[str, Any], deployment_uid: object) -> bool:
+    metadata = replica_set.get("metadata")
+    owner_references = metadata.get("ownerReferences") if isinstance(metadata, dict) else None
+    return isinstance(deployment_uid, str) and isinstance(owner_references, list) and any(
+        isinstance(owner, dict)
+        and owner.get("kind") == "Deployment"
+        and owner.get("uid") == deployment_uid
+        for owner in owner_references
+    )
+
+
+def diagnostic_identifier(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return "[redacted]" if DIAGNOSTIC_FORBIDDEN.search(value) else value
+
+
+def read_mock_sink_rollout_objects(
+) -> tuple[
+    dict[str, Any],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    deployment = kubectl_json(
+        "--namespace",
+        kind_runtime.NAMESPACE,
+        "get",
+        "deployment",
+        MOCK_SINK_DEPLOYMENT,
+    )
+    replica_sets = object_items(
+        kubectl_json(
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "get",
+            "replicasets",
+            "--selector",
+            MOCK_SINK_SELECTOR,
+        ),
+        "mock sink ReplicaSet",
+    )
+    pods = object_items(
+        kubectl_json(
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "get",
+            "pods",
+            "--selector",
+            MOCK_SINK_SELECTOR,
+        ),
+        "mock sink Pod",
+    )
+    endpoint_slices = object_items(
+        kubectl_json(
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "get",
+            "endpointslices",
+            "--selector",
+            f"kubernetes.io/service-name={MOCK_SINK_SERVICE}",
+        ),
+        "mock sink EndpointSlice",
+    )
+    return deployment, replica_sets, pods, endpoint_slices
+
+
+def evaluate_mock_sink_rollout(
+    deployment: dict[str, Any],
+    replica_sets: list[dict[str, Any]],
+    pods: list[dict[str, Any]],
+    endpoint_slices: list[dict[str, Any]],
+) -> tuple[bool, str]:
+    metadata = deployment.get("metadata")
+    spec = deployment.get("spec")
+    status = deployment.get("status")
+    if not isinstance(metadata, dict) or not isinstance(spec, dict) or not isinstance(status, dict):
+        fail("mock sink Deployment status is malformed")
+
+    reasons: list[str] = []
+    generation = metadata.get("generation")
+    desired = spec.get("replicas")
+    observed = status.get("observedGeneration")
+    updated = status.get("updatedReplicas", 0)
+    ready = status.get("readyReplicas", 0)
+    available = status.get("availableReplicas", 0)
+    unavailable = status.get("unavailableReplicas", 0)
+    if not isinstance(desired, int) or desired < 1:
+        reasons.append("Deployment desired replicas are invalid")
+    else:
+        if observed != generation:
+            reasons.append("Deployment generation is not observed")
+        if updated != desired:
+            reasons.append("Deployment updated replicas do not match desired")
+        if ready != desired:
+            reasons.append("Deployment ready replicas do not match desired")
+        if available != desired:
+            reasons.append("Deployment available replicas do not match desired")
+        if unavailable not in (None, 0):
+            reasons.append("Deployment still has unavailable replicas")
+
+    deployment_uid = metadata.get("uid")
+    annotations = metadata.get("annotations")
+    current_revision = (
+        annotations.get(DEPLOYMENT_REVISION_ANNOTATION)
+        if isinstance(annotations, dict)
+        else None
+    )
+    current_hashes: set[str] = set()
+    replica_summaries: list[dict[str, Any]] = []
+    for replica_set in replica_sets:
+        if not owned_by_deployment(replica_set, deployment_uid):
+            continue
+        replica_metadata = replica_set.get("metadata")
+        replica_spec = replica_set.get("spec")
+        replica_status = replica_set.get("status")
+        if not isinstance(replica_metadata, dict):
+            reasons.append("ReplicaSet metadata is malformed")
+            continue
+        replica_labels = replica_metadata.get("labels")
+        replica_annotations = replica_metadata.get("annotations")
+        template_hash = (
+            replica_labels.get(POD_TEMPLATE_HASH_LABEL)
+            if isinstance(replica_labels, dict)
+            else None
+        )
+        revision = (
+            replica_annotations.get(DEPLOYMENT_REVISION_ANNOTATION)
+            if isinstance(replica_annotations, dict)
+            else None
+        )
+        counts = {
+            "desired": replica_count(replica_spec, "replicas"),
+            "current": replica_count(replica_status, "replicas"),
+            "ready": replica_count(replica_status, "readyReplicas"),
+            "available": replica_count(replica_status, "availableReplicas"),
+        }
+        active_replicas = max(counts.values())
+        replica_summaries.append(
+            {
+                "name": diagnostic_identifier(replica_metadata.get("name")),
+                "revision": diagnostic_identifier(revision),
+                "templateHash": diagnostic_identifier(template_hash),
+                "replicas": counts,
+            }
+        )
+        if revision == current_revision and isinstance(template_hash, str):
+            current_hashes.add(template_hash)
+        elif active_replicas != 0:
+            reasons.append("old ReplicaSet still has active replicas")
+
+    if not isinstance(current_revision, str) or len(current_hashes) != 1:
+        reasons.append("current Deployment revision does not map to one ReplicaSet")
+        current_hash = None
+    else:
+        current_hash = next(iter(current_hashes))
+
+    pod_by_name: dict[str, dict[str, Any]] = {}
+    current_ready_pods: set[str] = set()
+    pod_summaries: list[dict[str, Any]] = []
+    for pod in pods:
+        pod_metadata = pod.get("metadata")
+        if not isinstance(pod_metadata, dict):
+            reasons.append("Pod metadata is malformed")
+            continue
+        name = pod_metadata.get("name")
+        labels = pod_metadata.get("labels")
+        template_hash = labels.get(POD_TEMPLATE_HASH_LABEL) if isinstance(labels, dict) else None
+        is_ready = pod_ready(pod)
+        deleting = pod_metadata.get("deletionTimestamp") is not None
+        pod_summaries.append(
+            {
+                "name": diagnostic_identifier(name),
+                "templateHash": diagnostic_identifier(template_hash),
+                "ready": is_ready,
+                "deleting": deleting,
+            }
+        )
+        if isinstance(name, str):
+            pod_by_name[name] = pod
+            if template_hash == current_hash and is_ready and not deleting:
+                current_ready_pods.add(name)
+
+    if isinstance(desired, int) and len(current_ready_pods) != desired:
+        reasons.append("current revision Ready Pod count does not match desired")
+
+    endpoint_pods: set[str] = set()
+    endpoint_summaries: list[dict[str, Any]] = []
+    for endpoint_slice in endpoint_slices:
+        raw_endpoints = endpoint_slice.get("endpoints")
+        if not isinstance(raw_endpoints, list):
+            reasons.append("EndpointSlice endpoints are malformed")
+            continue
+        for endpoint in raw_endpoints:
+            if not isinstance(endpoint, dict):
+                reasons.append("EndpointSlice endpoint is malformed")
+                continue
+            conditions = endpoint.get("conditions")
+            target_ref = endpoint.get("targetRef")
+            endpoint_ready = (
+                isinstance(conditions, dict) and conditions.get("ready") is True
+            )
+            pod_name = (
+                target_ref.get("name")
+                if isinstance(target_ref, dict) and target_ref.get("kind") == "Pod"
+                else None
+            )
+            endpoint_summaries.append(
+                {"pod": diagnostic_identifier(pod_name), "ready": endpoint_ready}
+            )
+            if not isinstance(pod_name, str):
+                reasons.append("Endpoint does not identify a Pod")
+                continue
+            endpoint_pods.add(pod_name)
+            endpoint_pod = pod_by_name.get(pod_name)
+            pod_metadata = (
+                endpoint_pod.get("metadata") if isinstance(endpoint_pod, dict) else None
+            )
+            pod_labels = pod_metadata.get("labels") if isinstance(pod_metadata, dict) else None
+            endpoint_hash = (
+                pod_labels.get(POD_TEMPLATE_HASH_LABEL)
+                if isinstance(pod_labels, dict)
+                else None
+            )
+            if (
+                endpoint_hash != current_hash
+                or not endpoint_ready
+                or not isinstance(endpoint_pod, dict)
+                or not pod_ready(endpoint_pod)
+                or (
+                    isinstance(pod_metadata, dict)
+                    and pod_metadata.get("deletionTimestamp") is not None
+                )
+            ):
+                reasons.append("Endpoint is not a Ready Pod from the current revision")
+
+    if endpoint_pods != current_ready_pods:
+        reasons.append("Service Endpoints do not match current revision Ready Pods")
+
+    summary = {
+        "deployment": {
+            "generation": generation,
+            "observedGeneration": observed,
+            "desiredReplicas": desired,
+            "updatedReplicas": updated,
+            "readyReplicas": ready,
+            "availableReplicas": available,
+            "unavailableReplicas": unavailable,
+            "currentRevision": diagnostic_identifier(current_revision),
+            "currentTemplateHash": diagnostic_identifier(current_hash),
+        },
+        "replicaSets": replica_summaries,
+        "pods": pod_summaries,
+        "endpoints": endpoint_summaries,
+        "reasons": sorted(set(reasons)),
+    }
+    sanitized_summary = sanitize_diagnostics(json.dumps(summary, sort_keys=True)).strip()
+    return not reasons, sanitized_summary
+
+
+def wait_for_mock_sink_rollout(
+    *,
+    timeout_seconds: float = 60,
+    poll_seconds: float = 0.2,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        converged, summary = evaluate_mock_sink_rollout(*read_mock_sink_rollout_objects())
+        if converged:
+            print("[ok] mock sink revision and Service Endpoints converged")
+            return
+        if time.monotonic() >= deadline:
+            fail(f"mock sink rollout did not converge: {summary}")
+        time.sleep(poll_seconds)
+
+
 def wait_all_workloads() -> None:
     for resource in (
         "deployment/hooklane-api",
@@ -210,7 +517,8 @@ def configure_sink_helm(mode: str, delay_seconds: int) -> None:
         "--history-max",
         "5",
     )
-    wait_rollout("deployment/hooklane-mock-sink")
+    wait_rollout(f"deployment/{MOCK_SINK_DEPLOYMENT}")
+    wait_for_mock_sink_rollout()
 
 
 def restore_normal_release() -> None:
@@ -237,6 +545,7 @@ def restore_normal_release() -> None:
         "5",
     )
     wait_all_workloads()
+    wait_for_mock_sink_rollout()
 
 
 def verify_normal_and_idempotent_delivery() -> list[str]:
@@ -352,7 +661,8 @@ def verify_pending_recovery() -> str:
         "HOOKLANE_MOCK_SINK_MODE=accept",
         "HOOKLANE_MOCK_SINK_DELAY_SECONDS=0",
     )
-    wait_rollout("deployment/hooklane-mock-sink")
+    wait_rollout(f"deployment/{MOCK_SINK_DEPLOYMENT}")
+    wait_for_mock_sink_rollout()
     run_kubectl(
         "--namespace",
         kind_runtime.NAMESPACE,
