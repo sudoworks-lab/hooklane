@@ -69,13 +69,14 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
+- `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。AWS resourceは変更していない
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
-- Terraform provider download、AWS apply、ECR push、cloud runtime、destroy実行
+- AWS apply、ECR push、cloud runtime、destroy実行
 
 ## 配布範囲
 

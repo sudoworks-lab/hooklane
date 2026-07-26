@@ -32,6 +32,16 @@ output "ecs_service_names" {
   }
 }
 
+output "runtime_services_enabled" {
+  description = "Whether the ECS services are configured to start tasks."
+  value       = var.runtime_services_enabled
+}
+
+output "runtime_service_desired_count" {
+  description = "Effective desired count for each ECS service after the staged-deployment gate."
+  value       = local.runtime_service_desired_count
+}
+
 output "redis_primary_endpoint_address" {
   description = "Private ElastiCache primary endpoint address."
   value       = aws_elasticache_replication_group.redis.primary_endpoint_address

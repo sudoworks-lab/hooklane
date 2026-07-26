@@ -27,6 +27,8 @@ locals {
 
   workload_names = toset(["api", "worker", "mock-sink"])
 
+  runtime_service_desired_count = var.runtime_services_enabled ? var.desired_count : 0
+
   mock_sink_url = "http://${aws_service_discovery_service.mock_sink.name}.${aws_service_discovery_private_dns_namespace.internal.name}:8080/internal/deliveries"
 
   downstream_url = var.controlled_downstream_url == null ? local.mock_sink_url : var.controlled_downstream_url

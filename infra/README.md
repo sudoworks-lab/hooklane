@@ -7,7 +7,7 @@
 - VPC、public subnet、private subnet、Internet Gateway
 - NAT Gatewayは既定で無効。private subnetからAWS managed serviceへ接続するためのVPC endpointは既定で有効
 - public ALBとAPI target group
-- private ECS Fargate API、worker、controlled mock sink
+- private ECS Fargate API、worker、controlled mock sink。初回foundation applyではserviceを0 taskに保つ
 - Cloud Map private DNSによるmock sink service discovery
 - ECR repositoryをAPI、worker、mock sinkごとに作成
 - ElastiCache Redis/Valkey。既定はTLS有効、single node、private subnet、public accessなし
@@ -20,7 +20,7 @@ API taskはALB security groupからの8080だけを受信する。workerとmock 
 
 ## Versionとimage
 
-既定の`image_tag`は`0.1.1`。ECR repositoryは作成するが、image pushはこのrepositoryやCIから自動実行しない。ECRへimageをpushし、taskを起動できる状態にすることは、AWS apply前の別のhuman-approved operationである。
+既定の`image_tag`は`0.1.1`。`runtime_services_enabled`の既定は`false`であり、ECR repository、task definition、ECS serviceは作成してもtaskを起動しない。image pushはこのrepositoryやCIから自動実行しない。3つのimmutable image tagをECRへpushし、そのdigestを確認した後だけ、`runtime_services_enabled = true`でAPI、worker、controlled mock sinkを各1 taskへ起動する。
 
 ## Remote state bootstrap
 
@@ -28,8 +28,8 @@ API taskはALB security groupからの8080だけを受信する。workerとmock 
 
 1. versioningを有効にしたprivate S3 bucket
 2. default encryptionとpublic access block
-3. state objectへの最小IAM権限
-4. `use_lockfile = true`によるS3 state lock
+3. state objectへの最小IAM権限をoperator側で付与する境界
+4. `use_lockfile = true`によるS3 native state lock
 5. retention、アクセス監査、削除保護の方針
 
 bucket名やAWS credentialはrepositoryへ保存しない。[backend.hcl.example](backend.hcl.example)は値のない設定例である。
@@ -46,29 +46,46 @@ Terraform CLIがある環境では、このtargetは`terraform fmt -check -recur
 
 ## Approved workflow
 
+root moduleのS3 backendはbootstrap前にはplanしない。bootstrap bucketが承認済みの名前で作成された後、ignored `backend.hcl`を使ってbackendを初期化する。
+
 ```bash
 cd infra
 terraform fmt -check -recursive
 terraform init -backend=false
 terraform validate
-terraform plan -out=hooklane-dev.tfplan
 ```
 
-remote stateを使う場合は、bootstrap済みbackend設定で次を実行する。
+承認済みのremote stateを使う場合は、bootstrap済みbackend設定で次を実行する。
 
 ```bash
 terraform init -backend-config=backend.hcl
-terraform plan -out=hooklane-dev.tfplan
+terraform plan -var-file=terraform.tfvars -out=hooklane-dev.tfplan
 ```
 
-`terraform apply`はこのGoalの停止境界であり、`AWS_APPLY_APPROVED`が明示されるまで実行しない。
+## Staged deployment order
+
+AWS resourceのapplyは人間承認された段階だけで実行する。順序は次のとおりである。
+
+1. bootstrap moduleをplanし、Human承認後にbootstrap applyを行う。
+2. 実際のbucket名を含むignored `backend.hcl`でroot S3 backendを初期化する。
+3. `runtime_services_enabled = false`でfoundation applyを行う。ECS serviceのeffective desired countは0であり、image pullは開始しない。
+4. API、worker、mock sink imageをbuildする。
+5. immutable `0.1.1` imageをそれぞれのECR repositoryへpushする。
+6. pushしたimage digestをECRでread-only確認する。
+7. `runtime_services_enabled = true`でruntime applyを行う。`desired_count = 1`なら各serviceが1 taskになる。
+8. ALB health check、API readiness、worker delivery、mock sink、CloudWatch Logsをruntime verificationする。
+9. 必要時はroot moduleをdestroyし、bootstrap bucketはstate移行または不要判断後に別途destroyする。
+
+`runtime_services_enabled = true`をimage push前にapplyしてはならない。ALB ingressの`192.0.2.1/32`、bootstrap bucket name、Redis AUTH tokenはHuman input境界であり、自動生成・自動置換しない。
+
+`terraform apply`はこのGoalの停止境界であり、明示的なHuman approvalがない限り実行しない。
 
 ## Cost-conscious defaults
 
 - NAT Gateway: disabled
 - interface/gateway VPC endpoints: enabled to avoid NAT dependency; disable only when an approved egress route exists
 - ElastiCache: one `cache.t4g.micro`
-- ECS desired count: one per service
+- ECS desired count: foundationではzero、image確認後のruntimeではone per service
 - Container Insights: disabled
 - CloudWatch Logs: seven-day retention
 - ALB deletion protection: disabled for disposable dev

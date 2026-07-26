@@ -97,7 +97,7 @@ variable "controlled_downstream_url" {
 }
 
 variable "image_tag" {
-  description = "Application image tag already published to the ECR repositories."
+  description = "Application image tag that must be published before runtime services are enabled."
   type        = string
   default     = "0.1.1"
 
@@ -107,8 +107,14 @@ variable "image_tag" {
   }
 }
 
+variable "runtime_services_enabled" {
+  description = "Start ECS tasks only after the immutable application images have been pushed and verified in ECR."
+  type        = bool
+  default     = false
+}
+
 variable "desired_count" {
-  description = "Desired count for API, worker, and controlled mock sink services."
+  description = "Desired count for API, worker, and controlled mock sink after runtime services are enabled."
   type        = number
   default     = 1
 

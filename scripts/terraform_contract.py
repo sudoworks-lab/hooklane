@@ -97,6 +97,7 @@ def validate_static_contract() -> None:
             fail(f"Terraform foundation contains prohibited contract: {marker}")
 
     required_fragments = (
+        'required_version = ">= 1.15.0, < 2.0.0"',
         'version = "= 5.95.0"',
         'backend "s3" {}',
         'default     = false',
@@ -109,6 +110,9 @@ def validate_static_contract() -> None:
         "deployment_circuit_breaker",
         'rollback = true',
         "use_lockfile = true",
+        'variable "runtime_services_enabled"',
+        "runtime_service_desired_count = var.runtime_services_enabled ? var.desired_count : 0",
+        "desired_count",
     )
     for fragment in required_fragments:
         if fragment not in source and fragment not in (INFRA / "backend.hcl.example").read_text(
@@ -136,9 +140,21 @@ def validate_static_contract() -> None:
         'resource "aws_s3_bucket_ownership_controls" "state"',
         'resource "aws_s3_bucket_policy" "require_tls"',
         'force_destroy = var.force_destroy',
+        'sse_algorithm = "AES256"',
+        'required_version = ">= 1.15.0, < 2.0.0"',
     ):
         if marker not in bootstrap_source:
             fail(f"Terraform bootstrap is missing required contract: {marker}")
+    if "bucket_key_enabled" in bootstrap_source:
+        fail("Terraform bootstrap must not configure S3 Bucket Key with SSE-S3")
+
+    ecs_source = (INFRA / "ecs.tf").read_text(encoding="utf-8")
+    if ecs_source.count("local.runtime_service_desired_count") != 3:
+        fail("all three ECS services must use the staged runtime desired count")
+
+    example_variables = (INFRA / "terraform.tfvars.example").read_text(encoding="utf-8")
+    if "runtime_services_enabled = false" not in example_variables:
+        fail("Terraform example must keep runtime services disabled for the foundation apply")
 
 
 def run_terraform_checks() -> None:

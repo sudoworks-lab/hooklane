@@ -16,3 +16,5 @@ terraform apply hooklane-destroy.tfplan
 ```
 
 このrepositoryのCIはdestroyを実行しない。AWS applyまたはdestroy後は、CloudWatch、ECR、Secrets Manager、ElastiCache、ALB、ECS、VPC endpoint、NAT Gatewayが残っていないことをAWS consoleまたは承認済みread-only queryで確認し、state lockを解放する。
+
+root moduleのdestroyはbootstrap S3 bucketを対象にしない。state bucketはroot moduleのstateを安全に移行または不要と判断した後だけ、bootstrap moduleで別途destroy planを作成して確認する。

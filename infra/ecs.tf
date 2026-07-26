@@ -223,7 +223,7 @@ resource "aws_ecs_service" "api" {
   name                               = "${local.name}-api"
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.api.arn
-  desired_count                      = var.desired_count
+  desired_count                      = local.runtime_service_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = var.fargate_platform_version
   deployment_minimum_healthy_percent = 100
@@ -260,7 +260,7 @@ resource "aws_ecs_service" "worker" {
   name                               = "${local.name}-worker"
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.worker.arn
-  desired_count                      = var.desired_count
+  desired_count                      = local.runtime_service_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = var.fargate_platform_version
   deployment_minimum_healthy_percent = 100
@@ -288,7 +288,7 @@ resource "aws_ecs_service" "mock_sink" {
   name                               = "${local.name}-mock-sink"
   cluster                            = aws_ecs_cluster.main.id
   task_definition                    = aws_ecs_task_definition.mock_sink.arn
-  desired_count                      = var.desired_count
+  desired_count                      = local.runtime_service_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = var.fargate_platform_version
   deployment_minimum_healthy_percent = 100
