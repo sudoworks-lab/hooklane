@@ -23,9 +23,14 @@ artifacts/
 
 # Terraform local state, cache, plans, and operator-provided variables
 infra/.terraform/
+infra/**/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
+infra/**/*.tfstate
+infra/**/*.tfstate.*
 infra/*.tfplan
+infra/**/*.tfplan
 infra/*.tfvars
+infra/**/terraform.tfvars
 !infra/terraform.tfvars.example
 infra/backend.hcl

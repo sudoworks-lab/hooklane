@@ -190,7 +190,7 @@ variable "redis_auth_token" {
   sensitive   = true
 
   validation {
-    condition     = var.redis_auth_token == null || length(var.redis_auth_token) >= 16
+    condition     = var.redis_auth_token == null ? true : length(var.redis_auth_token) >= 16
     error_message = "redis_auth_token must be at least 16 characters when provided."
   }
 }

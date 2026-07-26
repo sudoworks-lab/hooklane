@@ -10,6 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 INFRA = ROOT / "infra"
+BOOTSTRAP = INFRA / "bootstrap"
 REQUIRED_FILES = (
     "versions.tf",
     "variables.tf",
@@ -26,6 +27,13 @@ REQUIRED_FILES = (
     "outputs.tf",
     "README.md",
     "DESTROY.md",
+)
+BOOTSTRAP_REQUIRED_FILES = (
+    "versions.tf",
+    "variables.tf",
+    "main.tf",
+    "outputs.tf",
+    "README.md",
 )
 REQUIRED_RESOURCES = (
     'resource "aws_vpc"',
@@ -74,6 +82,11 @@ def validate_static_contract() -> None:
     for filename in REQUIRED_FILES:
         if not (INFRA / filename).is_file():
             fail(f"required Terraform foundation file is missing: {filename}")
+    if not BOOTSTRAP.is_dir():
+        fail("Terraform bootstrap directory is missing")
+    for filename in BOOTSTRAP_REQUIRED_FILES:
+        if not (BOOTSTRAP / filename).is_file():
+            fail(f"required Terraform bootstrap file is missing: {filename}")
 
     source = read_terraform_source()
     for marker in REQUIRED_RESOURCES:
@@ -112,6 +125,21 @@ def validate_static_contract() -> None:
         if "password=" in text or "secret=" in text or "token=" in text:
             fail(f"example configuration contains a credential-bearing query: {path.name}")
 
+    bootstrap_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(BOOTSTRAP.glob("*.tf"))
+    )
+    for marker in (
+        'resource "aws_s3_bucket" "state"',
+        'resource "aws_s3_bucket_versioning" "state"',
+        'resource "aws_s3_bucket_server_side_encryption_configuration" "state"',
+        'resource "aws_s3_bucket_public_access_block" "state"',
+        'resource "aws_s3_bucket_ownership_controls" "state"',
+        'resource "aws_s3_bucket_policy" "require_tls"',
+        'force_destroy = var.force_destroy',
+    ):
+        if marker not in bootstrap_source:
+            fail(f"Terraform bootstrap is missing required contract: {marker}")
+
 
 def run_terraform_checks() -> None:
     terraform = shutil.which("terraform")
@@ -119,32 +147,40 @@ def run_terraform_checks() -> None:
         print("[skip] terraform CLI is unavailable; static Terraform contract passed")
         return
 
-    commands = (
-        ("fmt", [terraform, "fmt", "-check", "-recursive"]),
-        (
-            "init",
-            [
-                terraform,
-                "init",
-                "-backend=false",
-                "-input=false",
-                "-upgrade=false",
-            ],
-        ),
-        ("validate", [terraform, "validate"]),
+    fmt_result = subprocess.run(
+        [terraform, "fmt", "-check", "-recursive"],
+        cwd=INFRA,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
-    for label, command in commands:
-        result = subprocess.run(
-            command,
-            cwd=INFRA,
+    if fmt_result.returncode != 0:
+        fail("terraform fmt failed; diagnostics were intentionally suppressed")
+    print("[ok] terraform fmt")
+    for module in (INFRA, BOOTSTRAP):
+        label = module.relative_to(ROOT).as_posix()
+        init_result = subprocess.run(
+            [terraform, "init", "-backend=false", "-input=false", "-upgrade=false"],
+            cwd=module,
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        if result.returncode != 0:
-            fail(f"terraform {label} failed; diagnostics were intentionally suppressed")
-        print(f"[ok] terraform {label}")
+        if init_result.returncode != 0:
+            fail(f"terraform init failed in {label}; diagnostics were intentionally suppressed")
+        validate_result = subprocess.run(
+            [terraform, "validate"],
+            cwd=module,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if validate_result.returncode != 0:
+            fail(f"terraform validate failed in {label}; diagnostics were intentionally suppressed")
+        print(f"[ok] terraform init/validate: {label}")
 
 
 def main() -> int:

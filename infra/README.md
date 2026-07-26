@@ -24,7 +24,7 @@ API taskはALB security groupからの8080だけを受信する。workerとmock 
 
 ## Remote state bootstrap
 
-このroot moduleはS3 backendを使うが、backend bucket自体を自動作成しない。backendは自分自身のstateを保存する必要があるため、先に一度だけ次を人間承認の下で用意する。
+このroot moduleはS3 backendを使う。backend bucket自体はroot moduleから自動作成せず、先に[`bootstrap`](bootstrap/README.md) moduleをlocal backendでplanし、人間承認の下で一度だけ用意する。
 
 1. versioningを有効にしたprivate S3 bucket
 2. default encryptionとpublic access block
