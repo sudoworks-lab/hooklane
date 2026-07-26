@@ -55,10 +55,10 @@ resource "aws_ecs_task_definition" "api" {
 
   container_definitions = jsonencode([
     {
-      name                 = "api"
-      image                = "${aws_ecr_repository.application["api"].repository_url}:${var.image_tag}"
-      essential            = true
-      user                 = "10001:10001"
+      name                   = "api"
+      image                  = "${aws_ecr_repository.application["api"].repository_url}:${var.image_tag}"
+      essential              = true
+      user                   = "10001:10001"
       readonlyRootFilesystem = true
       portMappings = [{
         name          = "http"
@@ -229,8 +229,8 @@ resource "aws_ecs_service" "api" {
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
   health_check_grace_period_seconds  = 60
-  enable_execute_command              = false
-  propagate_tags                      = "SERVICE"
+  enable_execute_command             = false
+  propagate_tags                     = "SERVICE"
 
   deployment_circuit_breaker {
     enable   = true
@@ -265,8 +265,8 @@ resource "aws_ecs_service" "worker" {
   platform_version                   = var.fargate_platform_version
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
-  enable_execute_command              = false
-  propagate_tags                      = "SERVICE"
+  enable_execute_command             = false
+  propagate_tags                     = "SERVICE"
 
   deployment_circuit_breaker {
     enable   = true
@@ -293,8 +293,8 @@ resource "aws_ecs_service" "mock_sink" {
   platform_version                   = var.fargate_platform_version
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
-  enable_execute_command              = false
-  propagate_tags                      = "SERVICE"
+  enable_execute_command             = false
+  propagate_tags                     = "SERVICE"
 
   deployment_circuit_breaker {
     enable   = true

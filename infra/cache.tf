@@ -26,11 +26,11 @@ resource "aws_elasticache_replication_group" "redis" {
   parameter_group_name = var.cache_engine == "valkey" ? "default.valkey7" : "default.redis7"
 
   automatic_failover_enabled = var.cache_num_nodes > 1
-  multi_az_enabled            = var.enable_cache_multi_az
-  transit_encryption_enabled  = true
-  at_rest_encryption_enabled  = true
-  auth_token                  = var.redis_auth_token
-  apply_immediately            = var.cache_apply_immediately
+  multi_az_enabled           = var.enable_cache_multi_az
+  transit_encryption_enabled = true
+  at_rest_encryption_enabled = true
+  auth_token                 = var.redis_auth_token
+  apply_immediately          = var.cache_apply_immediately
 
   subnet_group_name  = aws_elasticache_subnet_group.redis.name
   security_group_ids = [aws_security_group.redis.id]

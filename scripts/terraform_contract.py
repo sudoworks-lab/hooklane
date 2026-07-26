@@ -18,7 +18,7 @@ REQUIRED_FILES = (
     "security.tf",
     "ecr.tf",
     "cache.tf",
-    "secrets.tf",
+    "secret_store.tf",
     "iam.tf",
     "ecs.tf",
     "alb.tf",
