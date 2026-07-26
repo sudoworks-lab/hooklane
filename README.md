@@ -100,6 +100,16 @@ make cluster-down
 
 `make deploy`はlocal image buildとkind loadを使い、external registryへpushしない。`make e2e-kind`は正常配送、idempotency、retry、pending recovery、status参照、cleanupをまとめて確認する。
 
+## AWS Terraform foundation
+
+[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。
+
+```bash
+make terraform-validate
+```
+
+これはcredential-freeの静的contractであり、Terraform CLIがある環境ではfmt、backend無効init、validateも行う。AWS apply、ECR push、cloud runtime verificationは実行しない。
+
 ## 監視
 
 ```bash
@@ -138,6 +148,7 @@ make test
 make security
 make chart-validate
 make docs-check
+make terraform-validate
 make verify
 make clean-room
 ```

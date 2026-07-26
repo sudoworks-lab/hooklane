@@ -21,7 +21,8 @@ UNIT_TESTS := tests/unit tests/test_loop_runner.py tests/test_goal_loop_safety.p
 	chart-smoke resiliency-smoke e2e-kind rollout-smoke cluster-down \
 	observability-images observability-validate observability-up \
 	observability-smoke-base observability-down alert-rules-check observability-smoke \
-	incident-downstream-5xx incident-redis-outage incident-worker-stop incident-smoke
+	incident-downstream-5xx incident-redis-outage incident-worker-stop incident-smoke \
+	terraform-validate
 
 doctor:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
@@ -106,7 +107,11 @@ security: images-build
 	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no security interpreter was found"; exit 1; }
 	@$(TEST_PYTHON) scripts/security_gate.py all
 
-verify: smoke-fast lint typecheck test security chart-validate docs-check
+terraform-validate:
+	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
+	@$(PYTHON) scripts/terraform_contract.py
+
+verify: smoke-fast lint typecheck test security chart-validate docs-check terraform-validate
 
 ci-contract:
 	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no CI contract interpreter was found"; exit 1; }

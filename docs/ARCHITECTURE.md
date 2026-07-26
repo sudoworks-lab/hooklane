@@ -83,6 +83,10 @@ Kubernetesはreadinessに成功したAPI PodだけをService endpointへ加え�
 
 local image buildとkind loadだけを使い、external registryへpushしない。検証境界は[ADR 0003](adr/0003-local-kind-observability.md)に記録する。
 
+### AWS Terraform foundation
+
+[`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。APIはALB、workerとmock sinkはprivate service discovery、Redisはprivate ElastiCache endpointを使う。TerraformはECR、CloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義するが、AWS applyとcloud runtimeは未実証である。
+
 ## observability
 
 API、worker、mock sinkは共通contractのJSON structured logを出力する。correlationにはrequest IDまたはevent IDを使うが、payload、`Idempotency-Key`生値、credential、Redis connection情報、cookie、stack traceを記録しない。
@@ -106,7 +110,7 @@ GitHub hosted Actionsではquality / security / chart gatesとkind delivery and 
 
 - client inputは信頼せずAPI schemaで検証する。authenticationとtenant authorizationは実装しない
 - downstream destinationは`HOOKLANE_DOWNSTREAM_URL`で起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う
-- Redis connection情報はSecretの`secretKeyRef`からPodへ注入できる。`redis://`と`rediss://`を扱い、ConfigMap、log、metric、diagnosticsへRedis URLを出さない
+- Redis connection情報はKubernetes Secretの`secretKeyRef`またはTerraformで定義するSecrets Managerからtaskへ注入できる。`redis://`と`rediss://`を扱い、ConfigMap、log、metric、diagnosticsへRedis URLを出さない
 - PrometheusのServiceAccount tokenはautomatic mountを無効にし、namespace内Pod discoveryに必要なshort-lived projected tokenとread-only Roleだけを与える
 - Grafanaのanonymous Viewerはcluster-localに限定し、外部公開portを持たない
 

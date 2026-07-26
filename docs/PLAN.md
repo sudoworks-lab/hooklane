@@ -428,3 +428,4 @@ KICKOFF自体ではDockerfile、Compose、Kubernetes manifest、Helm chart、Pro
 
 - 2026-07-13: 「v0.1 public snapshot」節のGitHub Actionsに関する記述は、公開前の計画時点を示す。現在の事実は[検証根拠](RELEASE_EVIDENCE.md)を正本とし、GitHub hosted Actionsでquality / security / chart gatesとkind delivery and recovery E2Eの成功を確認済み。
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張せず、cloud production、実在する外部downstream、multi-node／multi-zone、long-running load、本番traffic、30日SLO達成実績は未確認のままとする。
+- `platform/aws-interview-v1`では、v0.1.1 runtime contractを基礎にTerraform AWS foundationを追加する。これはv0.1 local Goalの受入結果を置き換えず、AWS apply、ECR push、cloud runtimeの証明は別のhuman gateとする。

@@ -20,3 +20,12 @@ temp/
 # Hooklane project-local generated files
 !.env.example
 artifacts/
+
+# Terraform local state, cache, plans, and operator-provided variables
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/*.tfvars
+!infra/terraform.tfvars.example
+infra/backend.hcl

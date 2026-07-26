@@ -14,6 +14,8 @@
 
 `make verify`はsyntax／configuration check、Ruff、strict mypy、unit／integration test、security scan、Helm／Kubernetes validation、文書contractを集約する。全ての構成commandがsuccessであることを受け入れ条件とする。
 
+`make terraform-validate`はTerraform foundationのresource、security group、secret output、cost default、rollback contractをcredential-freeで検証する。Terraform CLIがない環境ではHCL syntaxのCLI検証を行わず、AWS APIにも接続しない。
+
 ## runtime検証
 
 ### Compose
@@ -73,6 +75,7 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
+- Terraform provider download、AWS apply、ECR push、cloud runtime、destroy実行
 
 ## 配布範囲
 
