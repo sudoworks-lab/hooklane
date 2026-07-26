@@ -74,6 +74,7 @@ terraform plan -out=hooklane-dev.tfplan
 - ALB deletion protection: disabled for disposable dev
 - Secrets Manager recovery window: zero for disposable dev only
 - controlled downstream: private mock sink by default; external endpoint requires an explicit egress decision
+- ALB ingress default: `192.0.2.1/32` documentation-only sentinel; replace with one Human-approved IPv4 `/32` before apply
 
 ALB、ECS、ElastiCache、interface VPC endpointには継続課金が発生し得る。実行前にregion、保持期間、endpoint、NAT、cache node数を確認する。
 

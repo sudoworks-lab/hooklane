@@ -91,6 +91,7 @@ def validate_static_contract() -> None:
         "valueFrom = aws_secretsmanager_secret.redis_url.arn",
         "secret_string = local.redis_url",
         "downstream_url = var.controlled_downstream_url == null ? local.mock_sink_url : var.controlled_downstream_url",
+        'default     = ["192.0.2.1/32"]',
         "assign_public_ip = false",
         "deployment_circuit_breaker",
         'rollback = true',

@@ -56,9 +56,9 @@ variable "enable_vpc_endpoints" {
 }
 
 variable "alb_ingress_cidr_blocks" {
-  description = "CIDR ranges allowed to reach the public ALB HTTP listener. Restrict this for real use."
+  description = "CIDR ranges allowed to reach the public ALB HTTP listener. The default is a non-routable plan-only sentinel."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["192.0.2.1/32"]
 }
 
 variable "enable_https" {
