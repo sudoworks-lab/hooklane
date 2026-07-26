@@ -70,14 +70,16 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。remote state bootstrap S3 bucketだけは明示承認の下で作成・security contractを検証済みである
-- 同branchの`artifact` stageはread-only planで`create=6`、`update=0`、`delete=0`を確認した。対象はAPI、worker、mock sinkのECR repository各1件とlifecycle policy各1件だけであり、artifact apply、ECR image push、root moduleのAWS resource作成は未実行である
+- 同branchの`artifact` stageはread-only planで`create=6`、`update=0`、`delete=0`を確認後、同じexact planをapplyした。対象はAPI、worker、mock sinkのECR repository各1件とlifecycle policy各1件だけであり、tag immutability、AES256 encryption、scan-on-push、repository policyなし、最新10 imageのlifecycle policyをread-onlyで確認した
+- 承認済みcommit固定tagのAPI、worker、mock sink imageをprivate ECRへpushし、digestとsizeをGit管理外evidenceへ保存した。local Trivy image policyのHIGH／CRITICAL findingは3 imageとも0件である。ECR Basic scan結果は照会時点でpendingであり、severity countは未確定である
+- 同じcommit固定tagで生成した`foundation` stageのread-only planは`create=49`、`update=0`、`delete=0`で、既存ECR 6 resourceのmutationは0、API／worker／mock sinkのECS desired countは全て0である
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
-- root module AWS apply、ECR push、cloud runtime、destroy実行
+- foundation／runtime AWS apply、cloud runtime、destroy実行、ECR Basic scanの完了結果
 
 ## 配布範囲
 

@@ -1,6 +1,6 @@
 # Hooklane AWS deployment foundation
 
-このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucketだけは別の明示承認で作成・検証済みであり、root moduleのECR、network、runtime resourceは未applyである。
+このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucketとartifact stageのECR repository／lifecycle policyだけは別の明示承認で作成・検証済みであり、network、foundation、runtime resourceは未applyである。
 
 ## 構成
 
@@ -26,7 +26,7 @@ API taskはALB security groupからの8080だけを受信する。workerとmock 
 - `foundation`: artifactを含む基盤resourceを作成し、ECS serviceのeffective desired countを0に保つ。taskは起動せず、image pullも始まらない。
 - `runtime`: foundationを維持したまま、API、worker、controlled mock sinkを`desired_count`へ起動する。
 
-image pushはこのrepositoryやCIから自動実行しない。3つのimmutable image tagをECRへpushし、そのdigestを確認した後だけ、`deployment_stage = "runtime"`をapplyする。
+image pushはこのrepositoryやCIから自動実行しない。ECRへはrelease tagではなく、build sourceを一意に特定する`git-<40-hex-commit>` tagを3 imageへ使う。そのdigestを確認した後だけ、`deployment_stage = "runtime"`をapplyする。
 
 ## Remote state bootstrap
 
@@ -75,7 +75,7 @@ AWS resourceのapplyは人間承認された段階だけで実行する。順序
 1. bootstrap moduleをplanし、Human承認後にbootstrap applyを行う。
 2. 実際のbucket名を含むignored `backend.hcl`でroot S3 backendを初期化する。
 3. `deployment_stage = "artifact"`でartifact applyを行い、3つのECR repositoryとlifecycle policyだけを作る。
-4. API、worker、mock sink imageをbuildし、immutable `0.1.1` tagをそれぞれのECR repositoryへpushする。
+4. API、worker、mock sink imageをbuildし、immutableな`git-<40-hex-commit>` tagをそれぞれのECR repositoryへpushする。
 5. pushしたimage digestをECRでread-only確認する。
 6. `deployment_stage = "foundation"`でfoundation applyを行う。ECS serviceのeffective desired countは0であり、image pullは開始しない。
 7. `deployment_stage = "runtime"`でruntime applyを行う。`desired_count = 1`なら各serviceが1 taskになる。
