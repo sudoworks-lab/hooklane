@@ -69,17 +69,19 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
-- `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。remote state bootstrap S3 bucketだけは明示承認の下で作成・security contractを検証済みである
+- `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。remote state bootstrap S3 bucket、artifact stage、ECS serviceを0 taskに保つfoundation stageは明示承認の下で作成・security contractを検証済みである
 - 同branchの`artifact` stageはread-only planで`create=6`、`update=0`、`delete=0`を確認後、同じexact planをapplyした。対象はAPI、worker、mock sinkのECR repository各1件とlifecycle policy各1件だけであり、tag immutability、AES256 encryption、scan-on-push、repository policyなし、最新10 imageのlifecycle policyをread-onlyで確認した
-- 承認済みcommit固定tagのAPI、worker、mock sink imageをprivate ECRへpushし、digestとsizeをGit管理外evidenceへ保存した。local Trivy image policyのHIGH／CRITICAL findingは3 imageとも0件である。ECR Basic scan結果は照会時点でpendingであり、severity countは未確定である
-- 同じcommit固定tagで生成した`foundation` stageのread-only planは`create=49`、`update=0`、`delete=0`で、既存ECR 6 resourceのmutationは0、API／worker／mock sinkのECS desired countは全て0である
+- 承認済みcommit固定tagのAPI、worker、mock sink imageをprivate ECRへpushし、digestとsizeをGit管理外evidenceへ保存した。local Trivy image policyのHIGH／CRITICAL findingは3 imageとも0件である。approved tagだけにmanual ECR Basic Scanを要求したが、3 imageとも`UNSUPPORTED`でseverity countは未確定である
+- 同じcommit固定tagで生成した`foundation` stageのread-only planは`create=49`、`update=0`、`delete=0`で、既存ECR 6 resourceのmutationは0、API／worker／mock sinkのECS desired countは全て0である。明示承認の下でapplyし、途中でCloud Map A recordに不要なECS container name/portを指定したためmock sink serviceだけが`InvalidParameter`で失敗した。A record contractに合わせてその指定を削除し、最終的なfoundation convergence planが`create=0`、`update=0`、`delete=0`となることを確認した
+- foundationの実AWS構成はVPC、public/private subnet各2、NAT Gatewayなし、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、ALB、Valkey 7.2系 single node、CloudWatch Logs 3 group、Secrets Manager secret、IAM、Cloud Map、ECS service 3件を含む。ALB ingressは`192.0.2.1/32` sentinelだけで、ECS serviceは全て`desired/running/pending = 0/0/0`、running/stopped Fargate taskは0件である
+- actual backendから生成した`runtime` stageのread-only planは`create=0`、`update=3`、`delete=0`で、API、worker、mock sinkのECS desired countを0から1へ変えるだけである。このplanはapplyしていない
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
-- foundation／runtime AWS apply、cloud runtime、destroy実行、ECR Basic scanの完了結果
+- runtime AWS apply、Fargate task startupとhealth/delivery、approved ALB ingressでの外部到達、cloud runtime、destroy実行、ECR Basic scanのseverity結果
 
 ## 配布範囲
 

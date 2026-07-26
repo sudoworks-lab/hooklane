@@ -1,6 +1,6 @@
 # Hooklane AWS deployment foundation
 
-このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucketとartifact stageのECR repository／lifecycle policyだけは別の明示承認で作成・検証済みであり、network、foundation、runtime resourceは未applyである。
+このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucket、artifact stageのECR repository／lifecycle policy、ECS serviceを0 taskに保つnetwork/foundation resourceは別の明示承認で作成・検証済みである。runtime resourceのdesired count 1へのapplyとtask runtime verificationは未実施である。
 
 ## 構成
 

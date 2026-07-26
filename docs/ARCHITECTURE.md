@@ -85,7 +85,7 @@ local image buildとkind loadだけを使い、external registryへpushしない
 
 ### AWS Terraform foundation
 
-[`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。`artifact` stageのECR repositoryとlifecycle policyは作成済みで、commit 固定 tagの3 imageをpush済みである。`foundation` stageはECS desired countを0に保ち、`runtime` stageだけがtaskを起動する。APIはALB、workerとmock sinkはprivate service discovery、Redisはprivate ElastiCache endpointを使う。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義するが、foundation／runtime AWS applyとcloud runtimeは未実証である。
+[`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。`artifact` stageのECR repositoryとlifecycle policyは作成済みで、commit 固定 tagの3 imageをpush済みである。`foundation` stageはAWSへapply済みで、ECS desired countを0に保つ。`runtime` stageだけがtaskを起動する。APIはALB、workerとmock sinkはprivate service discovery、Redisはprivate ElastiCache endpointを使う。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義する。runtime AWS apply、task startup、cloud runtimeは未実証である。
 
 ## observability
 

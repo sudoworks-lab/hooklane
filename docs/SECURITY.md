@@ -18,7 +18,7 @@ authentication、authorization、encryption termination、DDoS protection、supp
 
 repositoryは実値credentialを保持せず、`.env.example`はempty placeholderだけを許可する。contractは`make env-example-check`で検証する。secret値、`.env`値、cookie、private key、token、personal informationをlog、metric、diagnostics、test artifactへ出さない。
 
-KubernetesではRedis connection設定をSecret resourceの`secretKeyRef`からPodへ注入できる。Terraform foundationでは同じ境界をAWS Secrets ManagerとECS task secret injectionで定義する。remote state bootstrap S3 bucketとartifact stageのECRだけは明示承認の下で作成・security contractを検証したが、foundation／runtime AWS apply、rotation、Secret lifecycleは未実証である。Secret objectの値をdocumentationやdiagnosticsへ展開せず、既定のlocal fallbackはcredentialを要求せず、ConfigMapへRedis URLを配置しない。
+KubernetesではRedis connection設定をSecret resourceの`secretKeyRef`からPodへ注入できる。Terraform foundationでは同じ境界をAWS Secrets ManagerとECS task secret injectionで定義する。remote state bootstrap S3 bucket、artifact stageのECR、ECS taskを0 taskに保つfoundation stageは明示承認の下で作成・security contractを検証した。runtime AWS apply、ECS task secret injectionの実行、rotation、Secret lifecycleは未実証である。Secret objectの値をdocumentationやdiagnosticsへ展開せず、既定のlocal fallbackはcredentialを要求せず、ConfigMapへRedis URLを配置しない。
 
 ## requestとlogの扱い
 
