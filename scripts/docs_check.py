@@ -189,7 +189,7 @@ def validate_readme_contract() -> None:
         "make verify",
         "make clean-room",
         "GitHub hosted Actions",
-        "v0.1.0のtagとGitHub Releaseは公開済み",
+        "v0.1.1のtagがcurrent source baseline",
         "MIT License",
         "source-only",
         "prebuilt container image",
@@ -269,8 +269,8 @@ def validate_release_evidence_contract() -> None:
 def validate_metadata_contract() -> None:
     project = PYPROJECT.read_text(encoding="utf-8")
     chart = CHART.read_text(encoding="utf-8")
-    if 'version = "0.1.0"' not in project:
-        fail("package version differs from the approved v0.1.0 baseline")
+    if 'version = "0.1.1"' not in project:
+        fail("package version differs from the current v0.1.1 baseline")
     if 'description = "Webhook delivery service with retry, recovery, and observability"' not in project:
         fail("package description is missing or stale")
     if "description: Webhook delivery service chart" not in chart:

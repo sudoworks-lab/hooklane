@@ -1,4 +1,4 @@
-"""Fixed delivery client for Hooklane's internal mock sink."""
+"""Controlled delivery client with a mock-sink-compatible default."""
 
 from __future__ import annotations
 
@@ -6,6 +6,10 @@ from httpx import AsyncBaseTransport, AsyncClient, ConnectError, RequestError, T
 
 from hooklane.delivery.retry import DeliveryErrorClass
 from hooklane.queue.events import QueuedEvent
+from hooklane.runtime_config import (
+    downstream_config_from_environment,
+    parse_downstream_url,
+)
 
 
 MOCK_SINK_ORIGIN = "http://hooklane-mock-sink:8080"
@@ -16,7 +20,7 @@ DOWNSTREAM_DEDUPLICATION_KEY = "event_id"
 
 
 class DeliveryFailed(Exception):
-    """Raised when the fixed mock sink does not accept a delivery."""
+    """Raised when the configured downstream does not accept a delivery."""
 
     def __init__(self, error_class: DeliveryErrorClass) -> None:
         super().__init__(error_class.value)
@@ -24,27 +28,42 @@ class DeliveryFailed(Exception):
 
 
 class MockSinkClient:
-    """Deliver only to the project-owned mock sink origin."""
+    """Deliver to a controlled endpoint, defaulting to the project mock sink."""
 
-    def __init__(self, *, transport: AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        destination_url: str | None = None,
+        transport: AsyncBaseTransport | None = None,
+    ) -> None:
+        self._target = (
+            downstream_config_from_environment()
+            if destination_url is None
+            else parse_downstream_url(destination_url)
+        )
         self._client = AsyncClient(
-            base_url=MOCK_SINK_ORIGIN,
             transport=transport,
             timeout=5.0,
         )
 
     @property
     def target_origin(self) -> str:
-        """Return the immutable delivery origin used by this client."""
+        """Return the configured delivery origin without credentials."""
 
-        return MOCK_SINK_ORIGIN
+        return self._target.origin
+
+    @property
+    def target_url(self) -> str:
+        """Return the configured endpoint for deterministic non-secret tests."""
+
+        return self._target.value
 
     async def deliver(self, queued_event: QueuedEvent) -> None:
         """Send an event without exposing sink errors or request content."""
 
         try:
             response = await self._client.post(
-                MOCK_SINK_PATH,
+                self._target.value,
                 json={
                     "event_id": str(queued_event.event_id),
                     "event_type": queued_event.event.event_type,

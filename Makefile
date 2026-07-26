@@ -1,6 +1,6 @@
 PYTHON ?= $(shell command -v python 2>/dev/null || command -v python3 2>/dev/null)
 TEST_PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
-IMAGE_VERSION := 0.1.0
+IMAGE_VERSION := 0.1.1
 API_IMAGE := hooklane-api:$(IMAGE_VERSION)
 WORKER_IMAGE := hooklane-worker:$(IMAGE_VERSION)
 MOCK_SINK_IMAGE := hooklane-mock-sink:$(IMAGE_VERSION)

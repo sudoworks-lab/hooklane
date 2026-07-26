@@ -18,11 +18,11 @@ authentication、authorization、encryption termination、DDoS protection、supp
 
 repositoryは実値credentialを保持せず、`.env.example`はempty placeholderだけを許可する。contractは`make env-example-check`で検証する。secret値、`.env`値、cookie、private key、token、personal informationをlog、metric、diagnostics、test artifactへ出さない。
 
-KubernetesではRedis connection設定をSecret resourceからPodへ注入するが、Secret objectの値をdocumentationやdiagnosticsへ展開しない。ローカル構成はcredentialを要求せず、external secret managerとの統合は対象外。
+KubernetesではRedis connection設定をSecret resourceの`secretKeyRef`からPodへ注入できるが、Secret objectの値をdocumentationやdiagnosticsへ展開しない。既定のlocal fallbackはcredentialを要求せず、ConfigMapへRedis URLを配置しない。AWS Secrets Managerなどexternal secret managerとの統合はTerraform scopeであり、現時点では未実装。
 
 ## requestとlogの扱い
 
-APIはrequest schemaと`Idempotency-Key` lengthをsystem boundaryで検証する。downstream URLはrequestから受け取らず、固定allowlistのdestinationだけを使用する。
+APIはrequest schemaと`Idempotency-Key` lengthをsystem boundaryで検証する。downstream URLはrequestから受け取らず、起動時environmentのcontrolled endpointだけを使用する。未指定時はproject-owned mock sinkを使い、URL内credentialは拒否する。
 
 API、worker、mock sinkは共通のstructured JSON log contractを使う。許可fieldはtimestamp、level、service、event、request ID、event ID、attempt、status、outcome、reason code、durationなどに限定する。
 

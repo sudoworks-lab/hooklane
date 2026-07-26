@@ -18,9 +18,9 @@ RELEASE = "hooklane"
 KIND_CONFIG = ROOT / "deploy" / "kind" / "cluster.yaml"
 CHART = ROOT / "charts" / "hooklane"
 APPLICATION_IMAGES = (
-    "hooklane-api:0.1.0",
-    "hooklane-worker:0.1.0",
-    "hooklane-mock-sink:0.1.0",
+    "hooklane-api:0.1.1",
+    "hooklane-worker:0.1.1",
+    "hooklane-mock-sink:0.1.1",
 )
 
 

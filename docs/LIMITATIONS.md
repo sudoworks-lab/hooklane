@@ -45,7 +45,7 @@ Hooklaneは、Webhook受付、Redis Streams queue、at-least-once配送、observ
 - API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない
 - Kubernetes NetworkPolicy、ingress TLS、egress firewallは対象外
 - Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない
-- external secret manager、key rotation、encryption-at-rest、image signing、SBOM attestationを実装していない
+- AWS Secrets Managerなどexternal secret manager、key rotation、encryption-at-rest、image signing、SBOM attestationを実装していない。Kubernetes SecretからのRedis URL注入境界は実装するが、Secret lifecycleは管理しない
 - Redisにapplication payloadを保存するため、本番導入前にdata classification、retention、backup、encryptionを設計する必要がある
 - scanner databaseの更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない
 
@@ -55,7 +55,7 @@ security controlと残存riskの詳細は[security](SECURITY.md)を参照する�
 
 - GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを実行済み
 - GitHub Actionsは現在の公開mainを自動検証するが、cloud productionや本番trafficは検証しない
-- v0.1.0のtagとGitHub Releaseは公開済み
+- v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
 - prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildする
 - image registry push、release publishing、tag、deployment automationは実装していない

@@ -172,7 +172,7 @@ def create_unready_api_pod() -> str:
             "containers": [
                 {
                     "name": "api",
-                    "image": "hooklane-api:0.1.0",
+                    "image": "hooklane-api:0.1.1",
                     "imagePullPolicy": "IfNotPresent",
                     "envFrom": [{"configMapRef": {"name": "hooklane-config"}}],
                     "ports": [{"name": "http", "containerPort": 8080}],

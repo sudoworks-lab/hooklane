@@ -44,7 +44,7 @@ def test_fresh_public_snapshot_contract() -> None:
     release_notes = (ROOT / "docs" / "releases" / "v0.1.1.md").read_text(
         encoding="utf-8"
     )
-    assert "application behaviorの変更なし" in release_notes
+    assert "tag時点のapplication behaviorを記録する" in release_notes
 
     features = json.loads(
         (ROOT / "docs" / "features.json").read_text(encoding="utf-8")

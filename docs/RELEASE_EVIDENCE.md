@@ -66,7 +66,7 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 配送はat-least-onceであり、downstreamへのattemptが重複し得る
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
-- v0.1.0のtagとGitHub Releaseは公開済み
+- v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 
 ## 未確認事項
 

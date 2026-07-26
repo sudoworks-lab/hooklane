@@ -22,7 +22,7 @@ API / worker / mock sink -- /metrics --> Prometheus --> Grafana / alert rules
 | API | request validation、idempotency判定、atomic enqueue、status参照、health、metrics | downstream配送、retry実行 |
 | Redis Streams | event queue、consumer-group pending、event status、retry schedule、dead-letterの状態保持 | HA、automatic failover、business-level deduplication |
 | worker | stream消費、配送、retry／dead-letter判定、pending claim、graceful drain | HTTP受付、exactly-once保証 |
-| mock sink | 配送確認と安全な障害注入 | 実在する外部serviceの再現 |
+| mock sink / controlled downstream | 配送確認と安全な障害注入、設定可能な配送先境界 | 実在する外部serviceの本番互換性 |
 | Prometheus / Grafana | application metricsのscrape、SLI dashboard、alert評価 | 長期SLO実績、通知routing、on-call |
 
 実装は[`src/hooklane`](../src/hooklane)、Docker Compose構成は[`compose.yaml`](../compose.yaml)、Kubernetes構成は[`charts/hooklane`](../charts/hooklane/Chart.yaml)にある。
@@ -32,9 +32,9 @@ API / worker / mock sink -- /metrics --> Prometheus --> Grafana / alert rules
 1. clientが`POST /v1/events`へJSON requestと`Idempotency-Key`を送る
 2. APIがschemaとidempotency contractを検証し、新規requestへUUID event IDを割り当てる
 3. APIがevent、初期status、idempotency mappingをRedis上で原子的に作成する。永続化できた場合だけ`202 Accepted`を返す
-4. workerがconsumer groupからeventを取得し、statusを`delivering`へ遷移させ、event IDをreceipt keyとしてmock sinkへ配送する
+4. workerがconsumer groupからeventを取得し、statusを`delivering`へ遷移させ、event IDをreceipt keyとして設定済みdownstreamへ配送する。既定先はmock sinkである
 5. 成功時はstatusを`delivered`へ更新してstream messageをackする。retryable failureはretry scheduleへ移し、policy上限またはnon-retryable failureは`dead_letter`へ終端する
-6. `GET /v1/events/{event_id}`はstatus、attempt count、timestampを返す。payload本文はresponseへ再掲しない
+6. `GET /v1/events/{event_id}`はstatusとattempt countを返す。timestampとpayload本文はresponseへ含めない
 
 enqueueの実装は[`queue/events.py`](../src/hooklane/queue/events.py)、配送policyは[`worker/service.py`](../src/hooklane/worker/service.py)と[`delivery/sink.py`](../src/hooklane/delivery/sink.py)を正本とする。
 
@@ -105,8 +105,8 @@ GitHub hosted Actionsではquality / security / chart gatesとkind delivery and 
 主なboundaryはclientからAPI、workerからdownstream、PodからRedis、Prometheusからapplication metrics。
 
 - client inputは信頼せずAPI schemaで検証する。authenticationとtenant authorizationは実装しない
-- downstream destinationは固定allowlistを使い、request由来のarbitrary URLへ配送しない
-- Redis connection情報はSecretから注入できるが、log、metric、diagnosticsへ出さない
+- downstream destinationは`HOOKLANE_DOWNSTREAM_URL`で起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う
+- Redis connection情報はSecretの`secretKeyRef`からPodへ注入できる。`redis://`と`rediss://`を扱い、ConfigMap、log、metric、diagnosticsへRedis URLを出さない
 - PrometheusのServiceAccount tokenはautomatic mountを無効にし、namespace内Pod discoveryに必要なshort-lived projected tokenとread-only Roleだけを与える
 - Grafanaのanonymous Viewerはcluster-localに限定し、外部公開portを持たない
 

@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "hooklane.labels" . | nindent 4 }}
 data:
-  HOOKLANE_REDIS_URL: {{ .Values.config.redisURL | quote }}
+  HOOKLANE_DOWNSTREAM_URL: {{ .Values.config.downstreamURL | quote }}
   HOOKLANE_RETRY_MAXIMUM_ATTEMPTS: {{ .Values.retry.maximumAttempts | quote }}
   HOOKLANE_PENDING_IDLE_MILLISECONDS: {{ .Values.retry.pendingIdleMilliseconds | quote }}
   HOOKLANE_OBSERVABILITY_ENABLED: {{ .Values.observability.enabled | quote }}

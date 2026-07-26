@@ -19,8 +19,21 @@
     "config": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["redisURL"],
-      "properties": {"redisURL": {"type": "string", "minLength": 1}}
+      "required": ["redisURL", "downstreamURL", "redisURLSecret"],
+      "properties": {
+        "redisURL": {"type": "string", "minLength": 1},
+        "downstreamURL": {"type": "string", "minLength": 1},
+        "redisURLSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "name", "key"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "name": {"type": "string"},
+            "key": {"type": "string", "minLength": 1}
+          }
+        }
+      }
     },
     "retry": {
       "type": "object",

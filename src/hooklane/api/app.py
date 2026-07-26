@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-import os
 from time import perf_counter
 from typing import Annotated, Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
@@ -28,7 +27,6 @@ from hooklane.queue.events import (
 from hooklane.runtime import ServiceHealth
 
 
-DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 REQUEST_ID: ContextVar[str | None] = ContextVar("hooklane_request_id", default=None)
 
 
@@ -149,8 +147,7 @@ def create_app(
     app_metrics = metrics or HooklaneMetrics("api")
     app_logger = logger or StructuredLogger("api")
     owned_store = (
-        RedisEventStore.from_url(
-            os.environ.get("HOOKLANE_REDIS_URL", DEFAULT_REDIS_URL),
+        RedisEventStore.from_environment(
             metrics=app_metrics,
             logger=app_logger,
         )

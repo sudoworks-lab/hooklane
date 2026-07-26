@@ -2,7 +2,7 @@
 
 Hooklaneは、Webhookを受け付けてRedis Streamsへ保存し、非同期workerで配送するWebhook配送基盤。受付と配送を分離し、downstream障害をAPI受付の成否から切り離す。
 
-- API、Redis Streams、worker、固定mock sinkで構成する
+- API、Redis Streams、worker、mock sink（既定）で構成する。配送先は`HOOKLANE_DOWNSTREAM_URL`でcontrolled endpointへ切り替えられる
 - retry、dead-letter、pending recovery、配送status参照を持つ
 - ローカル検証とGitHub Actionsでquality、security、Kubernetes contractを確認する
 - cloud production、実在する外部downstream、長期負荷の実績は持たない
@@ -45,7 +45,7 @@ API / worker / mock sink -> Prometheus -> Grafana / alerts -> Runbooks
 - quality、security、Helm／Kubernetes、文書contractは`make verify`で機械検証する
 - Compose、kind delivery and recovery E2E、rolling update／rollback、observability、incident drillを再現する
 - GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eの成功を確認済み
-- v0.1.0のtagとGitHub Releaseは公開済み
+- v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 
 これはcloud production、実在する外部downstream、multi-node／multi-zone、長時間負荷、本番traffic、30日SLO達成の実績ではない。制約の正本は[制約](docs/LIMITATIONS.md)に置く。
 
@@ -66,6 +66,7 @@ make demo-smoke
 - 同じ`Idempotency-Key`と同じrequestは同じevent IDへ収束する
 - 成功時だけackし、未ack messageはpending recoveryの対象になる
 - payload、`Idempotency-Key`生値、credentialをlogやmetric labelへ出さない
+- `HOOKLANE_REDIS_URL`は`redis://`または`rediss://`を受け、credential-bearing URLはSecretから注入する。ConfigMapへRedis URLを置かない
 - metrics labelを有限集合に限定し、event IDやraw URLを使わない
 
 ## 保証しないこと・制約

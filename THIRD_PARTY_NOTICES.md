@@ -28,7 +28,7 @@ localとCIの検証workflowはkind、Helm、Gitleaks、OSV-Scanner、Trivy、Kub
 
 ## 配布に関する注記
 
-Hooklane v0.1.0はsource-onlyで公開している。prebuilt container image、container-registry artifact、release archive、binary distributionは配布しない。dependencyやimageのbuildまたはredistributionには各上流licenseに基づく義務が生じ得るため、exact upstream materialを確認する。
+Hooklane v0.1.1はsource-onlyで公開している。prebuilt container image、container-registry artifact、release archive、binary distributionは配布しない。dependencyやimageのbuildまたはredistributionには各上流licenseに基づく義務が生じ得るため、exact upstream materialを確認する。
 
 ## exact versionの確認方法
 

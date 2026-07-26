@@ -90,6 +90,9 @@ def main() -> int:
         KUBE_VERSION,
     )
     resources = validate_render_contract(rendered, "default")
+    configmap = resources[("ConfigMap", "hooklane-config")]
+    if "HOOKLANE_REDIS_URL:" in configmap:
+        fail("default ConfigMap must not contain HOOKLANE_REDIS_URL")
     workload_keys = (
         ("Deployment", "hooklane-api"),
         ("Deployment", "hooklane-worker"),
@@ -160,6 +163,35 @@ def main() -> int:
 
     if OBSERVABILITY_RESOURCES & set(resources):
         fail("observability resources rendered while disabled")
+
+    secret_render = run_helm(
+        "template",
+        "hooklane",
+        str(CHART),
+        "--namespace",
+        "hooklane",
+        "--kube-version",
+        KUBE_VERSION,
+        "--set",
+        "config.redisURLSecret.enabled=true",
+        "--set",
+        "config.redisURLSecret.name=hooklane-runtime",
+        "--set",
+        "config.redisURLSecret.key=redis-url",
+    )
+    secret_resources = validate_render_contract(secret_render, "secret-injection")
+    for key in (("Deployment", "hooklane-api"), ("Deployment", "hooklane-worker")):
+        require(
+            secret_resources[key],
+            key,
+            "name: HOOKLANE_REDIS_URL",
+            "secretKeyRef:",
+            "name: hooklane-runtime",
+            "key: redis-url",
+        )
+    if "HOOKLANE_REDIS_URL:" in secret_resources[("ConfigMap", "hooklane-config")]:
+        fail("Secret injection render must not put HOOKLANE_REDIS_URL in ConfigMap")
+
     enabled_render = run_helm(
         "template",
         "hooklane",

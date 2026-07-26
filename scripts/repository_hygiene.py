@@ -195,7 +195,7 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         "THIRD_PARTY_NOTICES.md",
         "requirements.lock",
         "GitHub hosted Actions",
-        "v0.1.0のtagとGitHub Releaseは公開済み",
+        "v0.1.1のtagがcurrent source baseline",
     ):
         if marker not in readme:
             fail(f"README release state is missing: {marker}")

@@ -13,9 +13,9 @@ from typing import Any, Never, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 APPLICATION_IMAGES = (
-    "hooklane-api:0.1.0",
-    "hooklane-worker:0.1.0",
-    "hooklane-mock-sink:0.1.0",
+    "hooklane-api:0.1.1",
+    "hooklane-worker:0.1.1",
+    "hooklane-mock-sink:0.1.1",
 )
 
 
@@ -58,7 +58,7 @@ def verify_policy_document(policy: dict[str, Any]) -> None:
         service_entries[name] = cast(dict[str, Any], entry)
     for service in ("api", "worker", "mock-sink"):
         image = service_entries[service].get("image")
-        if not isinstance(image, str) or ":0.1.0" not in image or image.endswith(":latest"):
+        if not isinstance(image, str) or ":0.1.1" not in image or image.endswith(":latest"):
             fail(f"{service} image is not fixed")
     redis_image = service_entries["redis"].get("image")
     if not isinstance(redis_image, str) or "@sha256:" not in redis_image:

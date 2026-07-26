@@ -26,17 +26,17 @@ class ImageExpectation(TypedDict):
 
 IMAGES: dict[str, ImageExpectation] = {
     "api": {
-        "name": "hooklane-api:0.1.0",
+        "name": "hooklane-api:0.1.1",
         "entrypoint": ["uvicorn"],
         "module": "hooklane.api.app",
     },
     "worker": {
-        "name": "hooklane-worker:0.1.0",
+        "name": "hooklane-worker:0.1.1",
         "entrypoint": ["python", "-m", "hooklane.worker.main"],
         "module": "hooklane.worker.main",
     },
     "mock-sink": {
-        "name": "hooklane-mock-sink:0.1.0",
+        "name": "hooklane-mock-sink:0.1.1",
         "entrypoint": ["uvicorn"],
         "module": "hooklane.mock_sink.app",
     },
@@ -259,7 +259,7 @@ def main() -> int:
         if not isinstance(labels_object, dict):
             fail(f"{name} labels are invalid")
         labels = cast(dict[str, Any], labels_object)
-        if labels.get("org.opencontainers.image.version") != "0.1.0":
+        if labels.get("org.opencontainers.image.version") != "0.1.1":
             fail(f"{name} has no fixed version label")
         if labels.get("io.hooklane.role") != role:
             fail(f"{name} role label does not match")

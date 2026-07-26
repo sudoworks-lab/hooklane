@@ -14,15 +14,15 @@
   },
   "services": {
     "api": {
-      "image": "hooklane-api:0.1.0",
+      "image": "hooklane-api:0.1.1",
       "lifecycle": "implemented"
     },
     "worker": {
-      "image": "hooklane-worker:0.1.0",
+      "image": "hooklane-worker:0.1.1",
       "lifecycle": "implemented"
     },
     "mock-sink": {
-      "image": "hooklane-mock-sink:0.1.0",
+      "image": "hooklane-mock-sink:0.1.1",
       "lifecycle": "implemented"
     },
     "redis": {
