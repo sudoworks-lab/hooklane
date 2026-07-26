@@ -18,6 +18,14 @@ resource "aws_security_group" "alb" {
     }
   }
 
+  egress {
+    description     = "ALB to API target"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.api[0].id]
+  }
+
   tags = {
     Name = "${local.name}-alb"
   }

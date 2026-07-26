@@ -16,7 +16,7 @@
 - ECS execution roleと、application permissionを持たないtask role
 - ECS deployment circuit breakerによるrollback
 
-API taskはALB security groupからの8080だけを受信する。workerとmock sinkはpublic inboundを持たず、RedisはAPI/worker security groupからの6379だけを受信する。全ECS taskの`assign_public_ip`はfalseである。workerの配送先はprivate Cloud Map mock sinkがdefaultで、承認済みのHTTP(S) endpointを`controlled_downstream_url`で切り替えられる。切替先へ到達するNATまたは別のegress経路は別途必要で、credential、query、fragmentを含むURLは受け付けない。
+API taskはALB security groupからの8080だけを受信し、ALBのegressもAPI security groupの8080だけに限定する。workerとmock sinkはpublic inboundを持たず、RedisはAPI/worker security groupからの6379だけを受信する。全ECS taskの`assign_public_ip`はfalseである。workerの配送先はprivate Cloud Map mock sinkがdefaultで、承認済みのHTTP(S) endpointを`controlled_downstream_url`で切り替えられる。切替先へ到達するNATまたは別のegress経路は別途必要で、credential、query、fragmentを含むURLは受け付けない。
 
 ## Deployment stageとimage
 

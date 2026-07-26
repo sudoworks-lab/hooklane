@@ -45,7 +45,7 @@ Hooklaneは、Webhook受付、Redis Streams queue、at-least-once配送、observ
 - API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない
 - Kubernetes NetworkPolicy、ingress TLS、egress firewallは対象外
 - Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない
-- remote state bootstrap S3 bucket、ECR artifact stage、ECS taskを0 taskに保つfoundation stageだけは明示承認の下で作成・security contractを検証した。AWS Secrets Managerのsecret value、ECS task secret injectionの実行、runtime apply、secret rotation、Secret lifecycle、実runtimeは未実証である。ElastiCacheのTLS／at-rest encryptionは設定とread-only APIで確認したが、application接続は未実証である。ECR Basic scanはapproved tagへのmanual要求が`UNSUPPORTED`であり、severity結果、image signing、SBOM attestationは未実証である
+- remote state bootstrap S3 bucket、ECR artifact stage、foundation stage、runtime stageを明示承認の下で実行した。runtimeではALB target、API task、mock sink taskがhealthyになったが、workerはECS startup health check failureで置換を繰り返したため、delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、rollback drillはAWS上で未検証である。実行後はartifact stageへ戻し、bootstrap S3、ECR repository、lifecycle policy、approved image以外のAWS resourceを削除した。AWS Secrets Managerのsecret valueは閲覧していない。secret rotation、Secret lifecycle、worker／Valkey接続の安定性は未実証である。ECR Basic scanはapproved tagへのmanual要求が`UNSUPPORTED`であり、severity結果、image signing、SBOM attestationは未実証である
 - Redisにapplication payloadを保存するため、本番導入前にdata classification、retention、backup、encryptionを設計する必要がある
 - scanner databaseの更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない
 
@@ -58,7 +58,7 @@ security controlと残存riskの詳細は[security](SECURITY.md)を参照する�
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
 - prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildする
-- ECR artifact stageはapply済みで、commit固定tagの3 imageをprivate ECRへpush済みである。ECS、ALB、managed Redis、CloudWatch、Secrets Managerを含むfoundation stageはapply済みだが、ECS taskは0 taskである。runtime apply、release publishing、cloud deployment automation、cloud runtime verificationは実行していない
+- ECR artifact stageはapply済みで、commit固定tagの3 imageをprivate ECRへpush済みである。foundationとruntime applyは実行後にartifact stageへcleanup済みであり、bootstrap S3、ECR repository、lifecycle policy、approved imageだけを保持する。runtimeのhealthy delivery verificationはworker health failureにより未完了である。release publishingとcloud deployment automationは実行していない
 - generated dependency lockとpinned imageは再現性を高めるが、reproducible-build attestationを提供しない
 
 versionと第三者softwareの確認範囲は[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)を参照する。

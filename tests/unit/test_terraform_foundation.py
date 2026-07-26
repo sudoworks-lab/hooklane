@@ -68,3 +68,15 @@ def test_mock_sink_a_record_service_registry_omits_container_port() -> None:
     assert "registry_arn = aws_service_discovery_service.mock_sink[0].arn" in mock_sink_service
     assert "container_name" not in mock_sink_service
     assert "container_port" not in mock_sink_service
+
+
+def test_alb_egress_is_limited_to_the_api_target_port() -> None:
+    security_source = (INFRA / "security.tf").read_text(encoding="utf-8")
+    alb_security_group = security_source.split(
+        'resource "aws_security_group" "alb" {', maxsplit=1
+    )[1].split('\n}\n\nresource "aws_security_group_rule" "alb_https"', maxsplit=1)[0]
+
+    assert 'from_port       = 8080' in alb_security_group
+    assert 'to_port         = 8080' in alb_security_group
+    assert 'security_groups = [aws_security_group.api[0].id]' in alb_security_group
+    assert 'cidr_blocks      = ["0.0.0.0/0"]' not in alb_security_group
