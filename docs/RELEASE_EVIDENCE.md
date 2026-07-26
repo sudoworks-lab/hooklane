@@ -75,7 +75,7 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 同じcommit固定tagで生成した`foundation` stageのread-only planは`create=49`、`update=0`、`delete=0`で、既存ECR 6 resourceのmutationは0、API／worker／mock sinkのECS desired countは全て0である。明示承認の下でapplyし、途中でCloud Map A recordに不要なECS container name/portを指定したためmock sink serviceだけが`InvalidParameter`で失敗した。A record contractに合わせてその指定を削除し、最終的なfoundation convergence planが`create=0`、`update=0`、`delete=0`となることを確認した
 - foundationの実AWS構成はVPC、public/private subnet各2、NAT Gatewayなし、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、ALB、Valkey 7.2系 single node、CloudWatch Logs 3 group、Secrets Manager secret、IAM、Cloud Map、ECS service 3件を含む。ALB ingressは`192.0.2.1/32` sentinelだけで、ECS serviceは全て`desired/running/pending = 0/0/0`、running/stopped Fargate taskは0件である
 - 2026-07-27 JSTに、Human承認済みの単一IPv4 `/32`だけをALB ingressへ設定した`runtime` stageを実行した。最初のexact planは`create=0`、`update=4`、`delete=0`で、API、worker、mock sinkのdesired countを0から1へ変え、ALB ingress sentinelを置換するものだった。同じartifactのapply後、ALB security groupにAPI targetへのegressがないことを確認し、API security groupのTCP/8080だけへ限定したegress ruleを追加する`create=0`、`update=1`、`delete=0`のexact planをapplyした
-- egress修正後、ALB target、API task、mock sink taskはhealthyになった。一方workerはECS startup health checkのfailureで置換を繰り返し、stableな`desired/running/pending = 1/1/0`へ収束しなかった。structured CloudWatch Logsには`worker_started`と`worker_stopped`だけが記録され、application errorを根拠にした原因特定はできなかった。このためnormal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drillは実行していない
+- egress修正後、ALB target、API task、mock sink taskはhealthyになった。一方workerはECS startup health checkのfailureで置換を繰り返し、stableな`desired/running/pending = 1/1/0`へ収束しなかった。structured CloudWatch Logsには`worker_started`と`worker_stopped`だけが記録され、application errorを根拠にした原因特定はできなかった。後続のローカルDocker再現で、Redis接続不能時にもworker processと`9090` metrics surfaceは生存する一方、当時のECS `startup` health commandだけがnon-zeroになることを確認した。ECS／Composeのlivenessをlocal metrics probeへ修正したが、修正後のAWS runtimeは未実証である。このためnormal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drillは実行していない
 - cost controlのためECS service 3件を`desired_count = 0`へ戻す`create=0`、`update=3`、`delete=0`のexact planをapplyした。その後artifact stageへのcleanup plan（`create=0`、`update=0`、`delete=49`）をapplyし、ALB、Valkey、VPC endpoint、VPC、ECS、Cloud Map、IAM、Secrets Manager、CloudWatch Logsを削除した。post-cleanupのactual backend artifact planは`create=0`、`update=0`、`delete=0`である。remote state bootstrap S3 bucket、ECR repository 3件、lifecycle policy 3件、approved image 3件は保持されている
 
 ## 未確認事項
@@ -84,7 +84,7 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
 - AWS runtimeのnormal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drill、approved ALB ingressからの外部到達
-- worker ECS startup health check failureの原因、AWS runtime上のworker／Valkey接続の安定性、ECR Basic scanのseverity結果
+- 修正後のAWS runtimeにおけるworker／Valkey接続の安定性、normal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drill、ECR Basic scanのseverity結果
 
 ## 配布範囲
 

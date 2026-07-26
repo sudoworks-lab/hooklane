@@ -139,7 +139,7 @@ resource "aws_ecs_task_definition" "worker" {
         valueFrom = aws_secretsmanager_secret.redis_url[0].arn
       }]
       healthCheck = {
-        command     = ["CMD-SHELL", "python -m hooklane.worker.health startup"]
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/metrics', timeout=2).close()\""]
         interval    = 30
         timeout     = 5
         retries     = 3

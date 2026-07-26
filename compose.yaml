@@ -97,9 +97,8 @@ services:
         - python
         - -c
         - >-
-          from redis import Redis;
-          groups = Redis(host='redis').xinfo_groups('hooklane:events');
-          assert any(group['name'] == b'hooklane-workers' for group in groups)
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:9090/metrics', timeout=2).close()
       interval: 1s
       timeout: 2s
       retries: 30

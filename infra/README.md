@@ -18,6 +18,8 @@
 
 API taskはALB security groupからの8080だけを受信し、ALBのegressもAPI security groupの8080だけに限定する。workerとmock sinkはpublic inboundを持たず、RedisはAPI/worker security groupからの6379だけを受信する。全ECS taskの`assign_public_ip`はfalseである。workerの配送先はprivate Cloud Map mock sinkがdefaultで、承認済みのHTTP(S) endpointを`controlled_downstream_url`で切り替えられる。切替先へ到達するNATまたは別のegress経路は別途必要で、credential、query、fragmentを含むURLは受け付けない。
 
+worker ECS containerのhealth checkは、imageに含まれるPython standard libraryで`127.0.0.1:9090/metrics`をprobeするliveness判定である。Redis接続、consumer group、retry schedulerの準備はworkerのdependency readinessであり、ECS taskを繰り返し置換する直接条件にしない。Kubernetesでもworker livenessは同じmetrics portのTCP probeであり、startup/readinessだけが`hooklane.worker.health`によるdependency判定を使う。
+
 ## Deployment stageとimage
 
 既定の`image_tag`は`0.1.1`、`deployment_stage`の既定は`artifact`である。stageは次の3つだけを受け付ける。
@@ -49,6 +51,12 @@ make terraform-validate
 ```
 
 Terraform CLIがある環境では、このtargetは`terraform fmt -check -recursive`、`terraform init -backend=false`、`terraform validate`も実行する。CLIがない環境では、静的なresource、security、secret-output、cost-default contractだけを検証し、Terraform syntaxの実証は未実行として報告する。provider downloadが必要な場合もbackendやAWS APIは使用しない。
+
+Dockerが利用可能な環境では、worker ECS liveness contractを次で再現できる。これはdisposable local Redisとworker containerを起動し、Redis接続不能時にもlocal metrics livenessが維持され、SIGTERMで`worker_stopped`が記録されることを確認してcleanupする。AWS credential、AWS resource、Redis connection valueは使用・出力しない。
+
+```bash
+make worker-ecs-health-repro
+```
 
 ## Approved workflow
 

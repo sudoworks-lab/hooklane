@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,6 +156,22 @@ def validate_static_contract() -> None:
     ecs_source = (INFRA / "ecs.tf").read_text(encoding="utf-8")
     if ecs_source.count("local.runtime_service_desired_count") != 3:
         fail("all three ECS services must use the staged runtime desired count")
+    worker_task = ecs_source.split(
+        'resource "aws_ecs_task_definition" "worker" {', maxsplit=1
+    )[1].split('resource "aws_ecs_task_definition" "mock_sink" {', maxsplit=1)[0]
+    worker_health_check = worker_task.split("healthCheck = {", maxsplit=1)[1].split(
+        "linuxParameters", maxsplit=1
+    )[0]
+    worker_liveness_command = (
+        "python -c \\\"import urllib.request; "
+        "urllib.request.urlopen('http://127.0.0.1:9090/metrics', timeout=2).close()\\\""
+    )
+    if f'command     = ["CMD-SHELL", "{worker_liveness_command}"]' not in worker_health_check:
+        fail("worker ECS health check must probe only the local metrics surface")
+    if "hooklane.worker.health startup" in worker_health_check:
+        fail("worker ECS health check must not make Redis readiness a liveness condition")
+    if "HOOKLANE_REDIS_URL" in worker_health_check:
+        fail("worker ECS health check must not expose the Redis connection setting")
 
     example_variables = (INFRA / "terraform.tfvars.example").read_text(encoding="utf-8")
     if 'deployment_stage       = "artifact"' not in example_variables:
@@ -192,26 +210,38 @@ def run_terraform_checks() -> None:
     print("[ok] terraform fmt")
     for module in (INFRA, BOOTSTRAP):
         label = module.relative_to(ROOT).as_posix()
-        init_result = subprocess.run(
-            [terraform, "init", "-backend=false", "-input=false", "-upgrade=false"],
-            cwd=module,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        if init_result.returncode != 0:
-            fail(f"terraform init failed in {label}; diagnostics were intentionally suppressed")
-        validate_result = subprocess.run(
-            [terraform, "validate"],
-            cwd=module,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        if validate_result.returncode != 0:
-            fail(f"terraform validate failed in {label}; diagnostics were intentionally suppressed")
+        with tempfile.TemporaryDirectory(prefix="hooklane-tf-contract-") as runtime_root:
+            runtime_path = Path(runtime_root)
+            temporary_home = runtime_path / "home"
+            temporary_home.mkdir()
+            environment = {
+                "HOME": str(temporary_home),
+                "PATH": os.environ.get("PATH", ""),
+                "TF_DATA_DIR": str(runtime_path / "terraform-data"),
+                "TF_IN_AUTOMATION": "1",
+            }
+            init_result = subprocess.run(
+                [terraform, "init", "-backend=false", "-input=false", "-upgrade=false"],
+                cwd=module,
+                env=environment,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if init_result.returncode != 0:
+                fail(f"terraform init failed in {label}; diagnostics were intentionally suppressed")
+            validate_result = subprocess.run(
+                [terraform, "validate"],
+                cwd=module,
+                env=environment,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if validate_result.returncode != 0:
+                fail(f"terraform validate failed in {label}; diagnostics were intentionally suppressed")
         print(f"[ok] terraform init/validate: {label}")
 
 

@@ -70,6 +70,36 @@ def test_mock_sink_a_record_service_registry_omits_container_port() -> None:
     assert "container_port" not in mock_sink_service
 
 
+def test_worker_liveness_contract_uses_the_local_metrics_surface() -> None:
+    ecs_source = (INFRA / "ecs.tf").read_text(encoding="utf-8")
+    compose_source = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    worker_chart = (
+        ROOT / "charts" / "hooklane" / "templates" / "worker-deployment.yaml"
+    ).read_text(encoding="utf-8")
+    worker_task = ecs_source.split(
+        'resource "aws_ecs_task_definition" "worker" {', maxsplit=1
+    )[1].split('resource "aws_ecs_task_definition" "mock_sink" {', maxsplit=1)[0]
+    worker_compose = compose_source.split("\n  worker:\n", maxsplit=1)[1]
+
+    local_probe = (
+        "python -c \\\"import urllib.request; "
+        "urllib.request.urlopen('http://127.0.0.1:9090/metrics', timeout=2).close()\\\""
+    )
+    assert "containerPort = 9090" in worker_task
+    assert f'command     = ["CMD-SHELL", "{local_probe}"]' in worker_task
+    assert "hooklane.worker.health startup" not in worker_task
+    assert "HOOKLANE_REDIS_URL" not in worker_task.split("healthCheck = {", maxsplit=1)[1].split(
+        "linuxParameters", maxsplit=1
+    )[0]
+    for setting in ("interval    = 30", "timeout     = 5", "retries     = 3", "startPeriod = 30"):
+        assert setting in worker_task
+
+    assert "127.0.0.1:9090/metrics" in worker_compose
+    assert "xinfo_groups" not in worker_compose
+    assert "tcpSocket:" in worker_chart
+    assert "port: metrics" in worker_chart
+
+
 def test_alb_egress_is_limited_to_the_api_target_port() -> None:
     security_source = (INFRA / "security.tf").read_text(encoding="utf-8")
     alb_security_group = security_source.split(

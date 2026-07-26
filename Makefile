@@ -22,7 +22,7 @@ UNIT_TESTS := tests/unit tests/test_loop_runner.py tests/test_goal_loop_safety.p
 	observability-images observability-validate observability-up \
 	observability-smoke-base observability-down alert-rules-check observability-smoke \
 	incident-downstream-5xx incident-redis-outage incident-worker-stop incident-smoke \
-	terraform-validate
+	terraform-validate worker-ecs-health-repro
 
 doctor:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
@@ -110,6 +110,11 @@ security: images-build
 terraform-validate:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
 	@$(PYTHON) scripts/terraform_contract.py
+
+worker-ecs-health-repro:
+	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
+	@docker build --target worker --tag $(WORKER_IMAGE) .
+	@$(PYTHON) scripts/worker_ecs_health_reproduction.py
 
 verify: smoke-fast lint typecheck test security chart-validate docs-check terraform-validate
 
