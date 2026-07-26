@@ -52,3 +52,19 @@ def test_artifact_stage_keeps_non_ecr_resources_out_of_the_first_apply() -> None
         assert "local.foundation_stage_enabled" in (INFRA / filename).read_text(
             encoding="utf-8"
         )
+
+
+def test_mock_sink_a_record_service_registry_omits_container_port() -> None:
+    ecs_source = (INFRA / "ecs.tf").read_text(encoding="utf-8")
+
+    cloud_map_service = ecs_source.split(
+        'resource "aws_service_discovery_service" "mock_sink" {', maxsplit=1
+    )[1].split('\n}\n\nresource "aws_ecs_task_definition"', maxsplit=1)[0]
+    mock_sink_service = ecs_source.split(
+        'resource "aws_ecs_service" "mock_sink" {', maxsplit=1
+    )[1].split("\n}\n", maxsplit=1)[0]
+
+    assert 'type = "A"' in cloud_map_service
+    assert "registry_arn = aws_service_discovery_service.mock_sink[0].arn" in mock_sink_service
+    assert "container_name" not in mock_sink_service
+    assert "container_port" not in mock_sink_service

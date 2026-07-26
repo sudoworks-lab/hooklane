@@ -326,9 +326,9 @@ resource "aws_ecs_service" "mock_sink" {
   }
 
   service_registries {
-    registry_arn   = aws_service_discovery_service.mock_sink[0].arn
-    container_name = "mock-sink"
-    container_port = 8080
+    # The Cloud Map service publishes A records for awsvpc task ENIs. ECS only
+    # accepts container name/port fields here when the DNS record type is SRV.
+    registry_arn = aws_service_discovery_service.mock_sink[0].arn
   }
 
   tags = {

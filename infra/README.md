@@ -8,7 +8,7 @@
 - NAT Gatewayは既定で無効。private subnetからAWS managed serviceへ接続するためのVPC endpointは既定で有効
 - public ALBとAPI target group
 - private ECS Fargate API、worker、controlled mock sink。foundation stageではserviceを0 taskに保つ
-- Cloud Map private DNSによるmock sink service discovery
+- Cloud Map private DNSによるmock sink service discovery。`awsvpc` taskのA recordを使うため、ECS service registryにはcontainer name/portを渡さない
 - ECR repositoryをAPI、worker、mock sinkごとに作成
 - ElastiCache Redis/Valkey。既定はTLS有効、single node、private subnet、public accessなし
 - CloudWatch Logs groupとretention
