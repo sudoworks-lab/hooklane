@@ -21,5 +21,7 @@ provider "aws" {
 }
 
 data "aws_availability_zones" "available" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   state = "available"
 }

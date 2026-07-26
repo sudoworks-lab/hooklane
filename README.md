@@ -102,7 +102,7 @@ make cluster-down
 
 ## AWS Terraform foundation
 
-[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。初回foundation applyではECS serviceを0 taskに保ち、ECR imageのpushとdigest確認後にだけruntimeを起動する。
+[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。`artifact` stageはECR repositoryとlifecycle policyだけを作成し、時間課金の基盤resourceを作らない。`foundation` stageではECS serviceを0 taskに保ち、ECR imageのpushとdigest確認後の`runtime` stageだけが各serviceを起動する。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。
 
 ```bash
 make terraform-validate

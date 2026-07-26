@@ -107,14 +107,19 @@ variable "image_tag" {
   }
 }
 
-variable "runtime_services_enabled" {
-  description = "Start ECS tasks only after the immutable application images have been pushed and verified in ECR."
-  type        = bool
-  default     = false
+variable "deployment_stage" {
+  description = "Deployment stage: artifact creates ECR only, foundation creates infrastructure with ECS desired count zero, and runtime starts ECS services."
+  type        = string
+  default     = "artifact"
+
+  validation {
+    condition     = contains(["artifact", "foundation", "runtime"], var.deployment_stage)
+    error_message = "deployment_stage must be artifact, foundation, or runtime."
+  }
 }
 
 variable "desired_count" {
-  description = "Desired count for API, worker, and controlled mock sink after runtime services are enabled."
+  description = "Desired count for API, worker, and controlled mock sink during the runtime stage."
   type        = number
   default     = 1
 

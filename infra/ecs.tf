@@ -1,4 +1,6 @@
 resource "aws_ecs_cluster" "main" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name = local.name
 
   setting {
@@ -12,9 +14,11 @@ resource "aws_ecs_cluster" "main" {
 }
 
 resource "aws_service_discovery_private_dns_namespace" "internal" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}.internal"
   description = "Private Cloud Map namespace for Hooklane service discovery"
-  vpc         = aws_vpc.main.id
+  vpc         = aws_vpc.main[0].id
 
   tags = {
     Name = "${local.name}.internal"
@@ -22,10 +26,12 @@ resource "aws_service_discovery_private_dns_namespace" "internal" {
 }
 
 resource "aws_service_discovery_service" "mock_sink" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name = "mock-sink"
 
   dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.internal.id
+    namespace_id = aws_service_discovery_private_dns_namespace.internal[0].id
 
     dns_records {
       ttl  = 10
@@ -45,13 +51,15 @@ resource "aws_service_discovery_service" "mock_sink" {
 }
 
 resource "aws_ecs_task_definition" "api" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   family                   = "${local.name}-api"
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = aws_iam_role.ecs_execution[0].arn
+  task_role_arn            = aws_iam_role.ecs_task[0].arn
 
   container_definitions = jsonencode([
     {
@@ -67,7 +75,7 @@ resource "aws_ecs_task_definition" "api" {
       }]
       secrets = [{
         name      = "HOOKLANE_REDIS_URL"
-        valueFrom = aws_secretsmanager_secret.redis_url.arn
+        valueFrom = aws_secretsmanager_secret.redis_url[0].arn
       }]
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/live', timeout=2).close()\""]
@@ -100,13 +108,15 @@ resource "aws_ecs_task_definition" "api" {
 }
 
 resource "aws_ecs_task_definition" "worker" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   family                   = "${local.name}-worker"
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = aws_iam_role.ecs_execution[0].arn
+  task_role_arn            = aws_iam_role.ecs_task[0].arn
 
   container_definitions = jsonencode([
     {
@@ -126,7 +136,7 @@ resource "aws_ecs_task_definition" "worker" {
       }]
       secrets = [{
         name      = "HOOKLANE_REDIS_URL"
-        valueFrom = aws_secretsmanager_secret.redis_url.arn
+        valueFrom = aws_secretsmanager_secret.redis_url[0].arn
       }]
       healthCheck = {
         command     = ["CMD-SHELL", "python -m hooklane.worker.health startup"]
@@ -159,13 +169,15 @@ resource "aws_ecs_task_definition" "worker" {
 }
 
 resource "aws_ecs_task_definition" "mock_sink" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   family                   = "${local.name}-mock-sink"
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = aws_iam_role.ecs_execution[0].arn
+  task_role_arn            = aws_iam_role.ecs_task[0].arn
 
   container_definitions = jsonencode([
     {
@@ -220,9 +232,11 @@ resource "aws_ecs_task_definition" "mock_sink" {
 }
 
 resource "aws_ecs_service" "api" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name                               = "${local.name}-api"
-  cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.api.arn
+  cluster                            = aws_ecs_cluster.main[0].id
+  task_definition                    = aws_ecs_task_definition.api[0].arn
   desired_count                      = local.runtime_service_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = var.fargate_platform_version
@@ -239,12 +253,12 @@ resource "aws_ecs_service" "api" {
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.private : subnet.id]
-    security_groups  = [aws_security_group.api.id]
+    security_groups  = [aws_security_group.api[0].id]
     assign_public_ip = false
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.api.arn
+    target_group_arn = aws_lb_target_group.api[0].arn
     container_name   = "api"
     container_port   = 8080
   }
@@ -257,9 +271,11 @@ resource "aws_ecs_service" "api" {
 }
 
 resource "aws_ecs_service" "worker" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name                               = "${local.name}-worker"
-  cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.worker.arn
+  cluster                            = aws_ecs_cluster.main[0].id
+  task_definition                    = aws_ecs_task_definition.worker[0].arn
   desired_count                      = local.runtime_service_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = var.fargate_platform_version
@@ -275,7 +291,7 @@ resource "aws_ecs_service" "worker" {
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.private : subnet.id]
-    security_groups  = [aws_security_group.worker.id]
+    security_groups  = [aws_security_group.worker[0].id]
     assign_public_ip = false
   }
 
@@ -285,9 +301,11 @@ resource "aws_ecs_service" "worker" {
 }
 
 resource "aws_ecs_service" "mock_sink" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name                               = "${local.name}-mock-sink"
-  cluster                            = aws_ecs_cluster.main.id
-  task_definition                    = aws_ecs_task_definition.mock_sink.arn
+  cluster                            = aws_ecs_cluster.main[0].id
+  task_definition                    = aws_ecs_task_definition.mock_sink[0].arn
   desired_count                      = local.runtime_service_desired_count
   launch_type                        = "FARGATE"
   platform_version                   = var.fargate_platform_version
@@ -303,12 +321,12 @@ resource "aws_ecs_service" "mock_sink" {
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.private : subnet.id]
-    security_groups  = [aws_security_group.mock_sink.id]
+    security_groups  = [aws_security_group.mock_sink[0].id]
     assign_public_ip = false
   }
 
   service_registries {
-    registry_arn   = aws_service_discovery_service.mock_sink.arn
+    registry_arn   = aws_service_discovery_service.mock_sink[0].arn
     container_name = "mock-sink"
     container_port = 8080
   }

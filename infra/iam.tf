@@ -1,4 +1,6 @@
 data "aws_iam_policy_document" "ecs_task_assume_role" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   statement {
     effect = "Allow"
 
@@ -12,8 +14,10 @@ data "aws_iam_policy_document" "ecs_task_assume_role" {
 }
 
 resource "aws_iam_role" "ecs_execution" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name               = "${local.name}-ecs-execution"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role[0].json
 
   tags = {
     Name = "${local.name}-ecs-execution"
@@ -21,8 +25,10 @@ resource "aws_iam_role" "ecs_execution" {
 }
 
 resource "aws_iam_role" "ecs_task" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name               = "${local.name}-ecs-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role[0].json
 
   tags = {
     Name = "${local.name}-ecs-task"
@@ -30,6 +36,8 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 data "aws_iam_policy_document" "ecs_execution" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   statement {
     sid       = "EcrAuthorization"
     effect    = "Allow"
@@ -62,12 +70,14 @@ data "aws_iam_policy_document" "ecs_execution" {
     sid       = "ReadRedisConnectionSecret"
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.redis_url.arn]
+    resources = [aws_secretsmanager_secret.redis_url[0].arn]
   }
 }
 
 resource "aws_iam_role_policy" "ecs_execution" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name   = "${local.name}-ecs-execution"
-  role   = aws_iam_role.ecs_execution.id
-  policy = data.aws_iam_policy_document.ecs_execution.json
+  role   = aws_iam_role.ecs_execution[0].id
+  policy = data.aws_iam_policy_document.ecs_execution[0].json
 }

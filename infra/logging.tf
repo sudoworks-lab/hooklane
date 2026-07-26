@@ -1,5 +1,5 @@
 resource "aws_cloudwatch_log_group" "service" {
-  for_each = local.workload_names
+  for_each = local.foundation_stage_enabled ? local.workload_names : toset([])
 
   name              = "/ecs/${local.name}/${each.value}"
   retention_in_days = var.log_retention_days

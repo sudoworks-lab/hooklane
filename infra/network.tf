@@ -1,4 +1,6 @@
 resource "aws_vpc" "main" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
@@ -9,7 +11,9 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
+  count = local.foundation_stage_enabled ? 1 : 0
+
+  vpc_id = aws_vpc.main[0].id
 
   tags = {
     Name = "${local.name}-igw"
@@ -17,9 +21,9 @@ resource "aws_internet_gateway" "main" {
 }
 
 resource "aws_subnet" "public" {
-  for_each = local.public_subnet_cidrs
+  for_each = local.foundation_stage_enabled ? local.public_subnet_cidrs : {}
 
-  vpc_id                  = aws_vpc.main.id
+  vpc_id                  = aws_vpc.main[0].id
   availability_zone       = each.key
   cidr_block              = each.value
   map_public_ip_on_launch = false
@@ -31,9 +35,9 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_subnet" "private" {
-  for_each = local.private_subnet_cidrs
+  for_each = local.foundation_stage_enabled ? local.private_subnet_cidrs : {}
 
-  vpc_id                  = aws_vpc.main.id
+  vpc_id                  = aws_vpc.main[0].id
   availability_zone       = each.key
   cidr_block              = each.value
   map_public_ip_on_launch = false
@@ -45,7 +49,9 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
+  count = local.foundation_stage_enabled ? 1 : 0
+
+  vpc_id = aws_vpc.main[0].id
 
   tags = {
     Name = "${local.name}-public"
@@ -53,22 +59,24 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route" "public_internet" {
-  route_table_id         = aws_route_table.public.id
+  count = local.foundation_stage_enabled ? 1 : 0
+
+  route_table_id         = aws_route_table.public[0].id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.main.id
+  gateway_id             = aws_internet_gateway.main[0].id
 }
 
 resource "aws_route_table_association" "public" {
-  for_each = local.az_to_index
+  for_each = local.foundation_stage_enabled ? local.az_to_index : {}
 
   subnet_id      = aws_subnet.public[each.key].id
-  route_table_id = aws_route_table.public.id
+  route_table_id = aws_route_table.public[0].id
 }
 
 resource "aws_route_table" "private" {
-  for_each = local.az_to_index
+  for_each = local.foundation_stage_enabled ? local.az_to_index : {}
 
-  vpc_id = aws_vpc.main.id
+  vpc_id = aws_vpc.main[0].id
 
   tags = {
     Name = "${local.name}-private-${each.key}"
@@ -76,14 +84,14 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private" {
-  for_each = local.az_to_index
+  for_each = local.foundation_stage_enabled ? local.az_to_index : {}
 
   subnet_id      = aws_subnet.private[each.key].id
   route_table_id = aws_route_table.private[each.key].id
 }
 
 resource "aws_eip" "nat" {
-  count = var.enable_nat_gateway ? 1 : 0
+  count = local.foundation_stage_enabled && var.enable_nat_gateway ? 1 : 0
 
   domain = "vpc"
 
@@ -93,7 +101,7 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count = var.enable_nat_gateway ? 1 : 0
+  count = local.foundation_stage_enabled && var.enable_nat_gateway ? 1 : 0
 
   allocation_id = aws_eip.nat[0].id
   subnet_id     = aws_subnet.public[local.azs[0]].id
@@ -106,7 +114,7 @@ resource "aws_nat_gateway" "main" {
 }
 
 resource "aws_route" "private_nat" {
-  for_each = var.enable_nat_gateway ? local.az_to_index : {}
+  for_each = local.foundation_stage_enabled && var.enable_nat_gateway ? local.az_to_index : {}
 
   route_table_id         = aws_route_table.private[each.key].id
   destination_cidr_block = "0.0.0.0/0"
@@ -114,9 +122,9 @@ resource "aws_route" "private_nat" {
 }
 
 resource "aws_vpc_endpoint" "s3" {
-  count = var.enable_vpc_endpoints ? 1 : 0
+  count = local.foundation_stage_enabled && var.enable_vpc_endpoints ? 1 : 0
 
-  vpc_id            = aws_vpc.main.id
+  vpc_id            = aws_vpc.main[0].id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = [for route_table in aws_route_table.private : route_table.id]
@@ -127,7 +135,7 @@ resource "aws_vpc_endpoint" "s3" {
 }
 
 resource "aws_vpc_endpoint" "interface" {
-  for_each = var.enable_vpc_endpoints ? toset([
+  for_each = local.foundation_stage_enabled && var.enable_vpc_endpoints ? toset([
     "ecr.api",
     "ecr.dkr",
     "logs",
@@ -135,11 +143,11 @@ resource "aws_vpc_endpoint" "interface" {
     "sts",
   ]) : toset([])
 
-  vpc_id              = aws_vpc.main.id
+  vpc_id              = aws_vpc.main[0].id
   service_name        = "com.amazonaws.${var.aws_region}.${each.value}"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [for subnet in aws_subnet.private : subnet.id]
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  security_group_ids  = [aws_security_group.vpc_endpoints[0].id]
   private_dns_enabled = true
 
   tags = {

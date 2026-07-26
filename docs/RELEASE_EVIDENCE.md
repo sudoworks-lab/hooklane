@@ -69,14 +69,15 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
-- `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。AWS resourceは変更していない
+- `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。remote state bootstrap S3 bucketだけは明示承認の下で作成・security contractを検証済みである
+- 同branchの`artifact` stageはread-only planで`create=6`、`update=0`、`delete=0`を確認した。対象はAPI、worker、mock sinkのECR repository各1件とlifecycle policy各1件だけであり、artifact apply、ECR image push、root moduleのAWS resource作成は未実行である
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
-- AWS apply、ECR push、cloud runtime、destroy実行
+- root module AWS apply、ECR push、cloud runtime、destroy実行
 
 ## 配布範囲
 

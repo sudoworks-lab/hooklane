@@ -1,7 +1,9 @@
 resource "aws_security_group" "alb" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}-alb"
   description = "Public ALB ingress for Hooklane API only."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main[0].id
 
   dynamic "ingress" {
     for_each = var.alb_ingress_cidr_blocks
@@ -22,10 +24,10 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group_rule" "alb_https" {
-  count = var.enable_https ? 1 : 0
+  count = local.foundation_stage_enabled && var.enable_https ? 1 : 0
 
   type              = "ingress"
-  security_group_id = aws_security_group.alb.id
+  security_group_id = aws_security_group.alb[0].id
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
@@ -34,9 +36,11 @@ resource "aws_security_group_rule" "alb_https" {
 }
 
 resource "aws_security_group" "api" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}-api"
   description = "ECS API tasks accept traffic from the ALB security group only."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main[0].id
 
   egress {
     description = "API egress for Redis and controlled downstream changes"
@@ -52,9 +56,11 @@ resource "aws_security_group" "api" {
 }
 
 resource "aws_security_group_rule" "alb_to_api" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   type                     = "ingress"
-  security_group_id        = aws_security_group.api.id
-  source_security_group_id = aws_security_group.alb.id
+  security_group_id        = aws_security_group.api[0].id
+  source_security_group_id = aws_security_group.alb[0].id
   from_port                = 8080
   to_port                  = 8080
   protocol                 = "tcp"
@@ -62,9 +68,11 @@ resource "aws_security_group_rule" "alb_to_api" {
 }
 
 resource "aws_security_group" "worker" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}-worker"
   description = "ECS worker tasks have no public or service ingress."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main[0].id
 
   egress {
     description = "Worker egress for Redis, mock sink, and controlled downstream"
@@ -80,16 +88,18 @@ resource "aws_security_group" "worker" {
 }
 
 resource "aws_security_group" "mock_sink" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}-mock-sink"
   description = "Controlled mock sink accepts traffic from worker tasks only."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main[0].id
 
   ingress {
     description     = "Worker to controlled mock sink"
     from_port       = 8080
     to_port         = 8080
     protocol        = "tcp"
-    security_groups = [aws_security_group.worker.id]
+    security_groups = [aws_security_group.worker[0].id]
   }
 
   egress {
@@ -106,16 +116,18 @@ resource "aws_security_group" "mock_sink" {
 }
 
 resource "aws_security_group" "redis" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}-redis"
   description = "ElastiCache accepts Redis traffic from API and worker tasks only."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main[0].id
 
   ingress {
     description     = "API to Redis"
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = [aws_security_group.api.id]
+    security_groups = [aws_security_group.api[0].id]
   }
 
   ingress {
@@ -123,7 +135,7 @@ resource "aws_security_group" "redis" {
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = [aws_security_group.worker.id]
+    security_groups = [aws_security_group.worker[0].id]
   }
 
   tags = {
@@ -132,9 +144,11 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_security_group" "vpc_endpoints" {
+  count = local.foundation_stage_enabled ? 1 : 0
+
   name        = "${local.name}-vpc-endpoints"
   description = "Private interface endpoints accept HTTPS from private subnet CIDRs."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = aws_vpc.main[0].id
 
   dynamic "ingress" {
     for_each = local.private_subnet_cidrs

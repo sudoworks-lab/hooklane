@@ -100,18 +100,21 @@ def validate_static_contract() -> None:
         'required_version = ">= 1.15.0, < 2.0.0"',
         'version = "= 5.95.0"',
         'backend "s3" {}',
-        'default     = false',
+        'default     = "artifact"',
+        'contains(["artifact", "foundation", "runtime"], var.deployment_stage)',
+        'foundation_stage_enabled = contains(["foundation", "runtime"], var.deployment_stage)',
+        'runtime_stage_enabled    = var.deployment_stage == "runtime"',
         'default     = 1',
-        "valueFrom = aws_secretsmanager_secret.redis_url.arn",
+        "valueFrom = aws_secretsmanager_secret.redis_url[0].arn",
         "secret_string = local.redis_url",
-        "downstream_url = var.controlled_downstream_url == null ? local.mock_sink_url : var.controlled_downstream_url",
+        "downstream_url = local.foundation_stage_enabled ? (var.controlled_downstream_url == null ? local.mock_sink_url : var.controlled_downstream_url) : null",
         'default     = ["192.0.2.1/32"]',
         "assign_public_ip = false",
         "deployment_circuit_breaker",
         'rollback = true',
         "use_lockfile = true",
-        'variable "runtime_services_enabled"',
-        "runtime_service_desired_count = var.runtime_services_enabled ? var.desired_count : 0",
+        'variable "deployment_stage"',
+        "runtime_service_desired_count = local.runtime_stage_enabled ? var.desired_count : 0",
         "desired_count",
     )
     for fragment in required_fragments:
@@ -153,8 +156,21 @@ def validate_static_contract() -> None:
         fail("all three ECS services must use the staged runtime desired count")
 
     example_variables = (INFRA / "terraform.tfvars.example").read_text(encoding="utf-8")
-    if "runtime_services_enabled = false" not in example_variables:
-        fail("Terraform example must keep runtime services disabled for the foundation apply")
+    if 'deployment_stage       = "artifact"' not in example_variables:
+        fail("Terraform example must start in the ECR-only artifact stage")
+
+    for filename in (
+        "network.tf",
+        "security.tf",
+        "cache.tf",
+        "secret_store.tf",
+        "iam.tf",
+        "ecs.tf",
+        "alb.tf",
+        "logging.tf",
+    ):
+        if "local.foundation_stage_enabled" not in (INFRA / filename).read_text(encoding="utf-8"):
+            fail(f"Terraform foundation file is not gated from the artifact stage: {filename}")
 
 
 def run_terraform_checks() -> None:
