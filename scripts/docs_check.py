@@ -17,6 +17,7 @@ DEMO = ROOT / "docs" / "DEMO.md"
 DEVELOPMENT = ROOT / "docs" / "DEVELOPMENT.md"
 RELEASE_EVIDENCE = ROOT / "docs" / "RELEASE_EVIDENCE.md"
 AWS_RUNTIME_EVIDENCE = ROOT / "docs" / "aws" / "runtime-evidence.json"
+F004_MIGRATION_ADR = ROOT / "docs" / "adr" / "0004-f004-destination-contract-migration.md"
 RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.1.md"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 LICENSE = ROOT / "LICENSE"
@@ -255,7 +256,7 @@ def validate_release_evidence_contract() -> None:
         "Gitleaks",
         "OSV-Scanner",
         "Trivy",
-        "GitHub hosted Actionsは公開mainで実行済み",
+        "GitHub hosted Actionsは公開mainの旧baselineで実行済み",
         "Quality, security, and chart gatesはsuccess",
         "kind delivery and recovery E2Eはsuccess",
         "source-only",
@@ -297,6 +298,10 @@ def validate_current_aws_evidence_contract() -> None:
             fail(f"sanitized AWS runtime evidence is missing: {key}")
     if evidence.get("secret_free") is not True:
         fail("sanitized AWS runtime evidence must declare secret_free=true")
+    if evidence.get("source_commit") != "50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e":
+        fail("sanitized AWS runtime evidence source commit is unexpected")
+    if evidence.get("image_source_commit") != "5a2c3cd7e99fda46b9622abea30e40eb4c91dca9":
+        fail("sanitized AWS runtime evidence image source commit is unexpected")
     runtime_plan = evidence.get("runtime_plan")
     cleanup_plan = evidence.get("cleanup_plan")
     if runtime_plan != {"create": 0, "update": 4, "delete": 0}:
@@ -306,12 +311,54 @@ def validate_current_aws_evidence_contract() -> None:
 
     current_state_documents = (
         README,
-        ROOT / "infra" / "README.md",
         ROOT / "docs" / "ARCHITECTURE.md",
         ROOT / "docs" / "SECURITY.md",
         ROOT / "docs" / "LIMITATIONS.md",
         RELEASE_EVIDENCE,
+        ROOT / "infra" / "README.md",
     )
+    scope_markers = (
+        "50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e",
+        "5a2c3cd7e99fda46b9622abea30e40eb4c91dca9",
+        "現在HEADのapplication / Helm / Terraform修正はlocal verification済み",
+        "現在HEADおよび新immutable imageはAWS再検証前",
+        "現在HEADのAWS実証とは扱わない",
+    )
+    for document in current_state_documents:
+        text = document.read_text(encoding="utf-8")
+        for marker in scope_markers:
+            if marker not in text:
+                fail(
+                    "current-state documentation is missing AWS evidence scope: "
+                    f"{document.relative_to(ROOT)}"
+                )
+    github_scope_documents = (
+        README,
+        ROOT / "infra" / "README.md",
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "LIMITATIONS.md",
+        RELEASE_EVIDENCE,
+    )
+    for document in github_scope_documents:
+        text = document.read_text(encoding="utf-8")
+        if "公開mainの旧baseline" not in text or "Push後のPR CI" not in text:
+            fail(
+                "current-state documentation is missing hosted-CI generation scope: "
+                f"{document.relative_to(ROOT)}"
+            )
+    if not F004_MIGRATION_ADR.is_file():
+        fail("F004 contract migration ADR is missing")
+    migration = F004_MIGRATION_ADR.read_text(encoding="utf-8")
+    for marker in (
+        "Human Decision",
+        "DELIVERY_TARGET_ALLOWLIST",
+        "operator-controlledなstartup configuration",
+        "requestから配送先を変更できない",
+        "features.json",
+        "恒久的な自動編集権限の緩和は行わない",
+    ):
+        if marker not in migration:
+            fail(f"F004 migration ADR is missing: {marker}")
     stale_claims = (
         "修正後のAWS runtimeは未実証",
         "runtime AWS apply、ECS task secret injectionの実行",

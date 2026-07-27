@@ -87,6 +87,8 @@ local image buildとkind loadだけを使い、external registryへpushしない
 
 [`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。`artifact` stageのECR repositoryとlifecycle policy、`foundation` stage、`runtime` stageを明示承認下で実行し、runtime検証後にartifact stageへcleanupした。修正後workerを含む3 ECS serviceは40秒で`1/1/0`へ到達し、worker health、ALB target、normal delivery、idempotency、503 retry、attempt 5のdead-letter、graceful worker replacement、image-pull failure時のhealthy target維持を確認した。未確認事項は[制約](LIMITATIONS.md)と[sanitized AWS evidence](aws/runtime-evidence.json)に固定する。APIはALB、workerとmock sinkはprivate service discovery、Redisはprivate ElastiCache endpointを使う。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義する。
 
+sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない。
+
 ## observability
 
 API、worker、mock sinkは共通contractのJSON structured logを出力する。correlationにはrequest IDまたはevent IDを使うが、payload、`Idempotency-Key`生値、credential、Redis connection情報、cookie、stack traceを記録しない。
@@ -102,14 +104,14 @@ application metricsは`hooklane_` prefixと有限label集合を使う。event ID
 
 [`ci.yml`](../.github/workflows/ci.yml)には`quality`と`e2e-kind`の2 jobがある。quality jobは`make verify`を呼び、kind jobはそのsuccess後に`make e2e-kind`を呼ぶ。workflowはread-only repository permission、full commit SHAで固定したaction、secretを必要としないpull request triggerを使う。
 
-GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。Hosted CIは公開mainの自動検証であり、cloud productionや本番trafficの実績ではない。
+GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。現在branchはPush後のPR CIで確認する。Hosted CIはcloud productionや本番trafficの実績ではない。
 
 ## trust boundary
 
 主なboundaryはclientからAPI、workerからdownstream、PodからRedis、Prometheusからapplication metrics。
 
 - client inputは信頼せずAPI schemaで検証する。authenticationとtenant authorizationは実装しない
-- downstream destinationは`HOOKLANE_DOWNSTREAM_URL`でoperatorが起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う。requestごとの宛先選択を行わず、startup configurationをoperator-controlled boundaryとして扱う
+- downstream destinationは`HOOKLANE_DOWNSTREAM_URL`でoperatorが起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う。requestごとの宛先選択を行わず、startup configurationをoperator-controlled boundaryとして扱う。このF004 contract migrationは[ADR 0004](adr/0004-f004-destination-contract-migration.md)に記録する
 - Redis connection情報はKubernetes Secretの`secretKeyRef`またはTerraformで定義するSecrets Managerからtaskへ注入できる。`redis://`と`rediss://`を扱い、ConfigMap、log、metric、diagnosticsへRedis URLを出さない
 - PrometheusのServiceAccount tokenはautomatic mountを無効にし、namespace内Pod discoveryに必要なshort-lived projected tokenとread-only Roleだけを与える
 - Grafanaのanonymous Viewerはcluster-localに限定し、外部公開portを持たない

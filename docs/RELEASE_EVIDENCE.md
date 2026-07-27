@@ -42,15 +42,19 @@
 
 `make clean-room`はtracked Git candidateからhardlinkなしの一時cloneを作り、initialization、dependency setup、verify、Compose、kind E2E、rollout、observability、incident、documentation、diff、cleanup contractを実行する。
 
+## AWS evidence scope
+
+sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、記録済みevidenceを現在HEADのAWS実証とは扱わない。
+
 ## GitHub Actions
 
-- GitHub hosted Actionsは公開mainで実行済み
+- GitHub hosted Actionsは公開mainの旧baselineで実行済み。現在branchはPush後のPR CIで確認する
 - Quality, security, and chart gatesはsuccess
 - kind delivery and recovery E2Eはsuccess
 - success時のfailure diagnostics uploadはskip、cleanupはsuccess
 - Node.js 20 deprecation annotationは現行workflowで発生していない
 
-Hosted CIは現在の公開mainに対する自動検証であり、cloud productionや本番trafficの実績ではない。
+Hosted CIは公開mainの旧baselineに対する自動検証であり、cloud productionや本番trafficの実績ではない。
 
 ## security scan
 

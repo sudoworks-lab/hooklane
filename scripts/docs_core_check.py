@@ -18,6 +18,7 @@ ADRS = (
     DOCS / "adr" / "0001-redis-streams-at-least-once.md",
     DOCS / "adr" / "0002-health-semantics.md",
     DOCS / "adr" / "0003-local-kind-observability.md",
+    DOCS / "adr" / "0004-f004-destination-contract-migration.md",
 )
 CORE_DOCUMENTS = (ARCHITECTURE, OPERATIONS, SECURITY, LIMITATIONS, SLO, *ADRS)
 RUNBOOKS = tuple(sorted((DOCS / "runbooks").glob("*.md")))

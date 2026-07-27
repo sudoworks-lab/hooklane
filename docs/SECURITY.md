@@ -20,6 +20,8 @@ repositoryは実値credentialを保持せず、`.env.example`はempty placeholde
 
 KubernetesではRedis connection設定をSecret resourceの`secretKeyRef`からPodへ注入できる。Terraform foundationでは同じ境界をAWS Secrets ManagerとECS task secret injectionで定義する。remote state bootstrap S3 bucket、artifact stageのECR、ECS taskを0 taskに保つfoundation stage、runtime taskへのSecret injectionは明示承認の下で作成・security contractを検証した。rotation、Secret lifecycle、長期接続安定性は未実証である。Secret objectの値をdocumentationやdiagnosticsへ展開せず、既定のlocal fallbackはcredentialを要求せず、ConfigMapへRedis URLを配置しない。
 
+sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない。
+
 ## requestとlogの扱い
 
 APIはrequest schemaと`Idempotency-Key` lengthをsystem boundaryで検証する。downstream URLはrequestから受け取らず、起動時environmentのoperator-controlled endpointだけを使用する。未指定時はproject-owned mock sinkを使い、URL内credentialは拒否する。requestごとの配送先選択は行わない。
@@ -109,7 +111,7 @@ scanner unavailable、timeout、database download failure、parse failureをfind
 - concurrency、timeout、failure diagnostics、always cleanupを明示する
 - container imageをexternal registryへpushしない
 
-static contractは`make ci-contract`で検証する。GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。
+static contractは`make ci-contract`で検証する。GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済みであり、現在branchはPush後のPR CIで確認する。
 
 ## failure safety
 

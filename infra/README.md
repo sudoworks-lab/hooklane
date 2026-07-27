@@ -2,6 +2,8 @@
 
 このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucket、artifact stageのECR repository／lifecycle policy、ECS serviceを0 taskに保つnetwork/foundation resource、desired count 1のruntime検証は別の明示承認で実行・検証済みである。runtime検証後はartifact stageへcleanupし、bootstrap S3とECR artifactだけを保持している。
 
+sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない。GitHub hosted Actionsの記録済みsuccessは公開mainの旧baselineに対するものであり、現在branchはPush後のPR CIで確認する。
+
 ## 構成
 
 - VPC、public subnet、private subnet、Internet Gateway

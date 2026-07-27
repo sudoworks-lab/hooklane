@@ -220,7 +220,7 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         "make observability-smoke",
         "make incident-smoke",
         "make clean-room",
-        "GitHub hosted Actionsは公開mainで実行済み",
+        "GitHub hosted Actionsは公開mainの旧baselineで実行済み",
         "Quality, security, and chart gatesはsuccess",
         "kind delivery and recovery E2Eはsuccess",
         "source-only",

@@ -53,8 +53,9 @@ security controlと残存riskの詳細は[security](SECURITY.md)を参照する�
 
 ## CIと公開
 
-- GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを実行済み
-- GitHub Actionsは現在の公開mainを自動検証するが、cloud productionや本番trafficは検証しない
+- GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。現在branchはPush後のPR CIで確認する
+- GitHub Actionsはcloud productionや本番trafficを検証しない
+- sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
 - prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildする

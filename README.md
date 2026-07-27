@@ -44,7 +44,7 @@ API / worker / mock sink -> Prometheus -> Grafana / alerts -> Runbooks
 
 - quality、security、Helm／Kubernetes、文書contractは`make verify`で機械検証する
 - Compose、kind delivery and recovery E2E、rolling update／rollback、observability、incident drillを再現する
-- GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eの成功を確認済み
+- GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eのsuccessを記録済みであり、現在branchはPush後のPR CIで確認する
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 
 これはcloud production、実在する外部downstream、multi-node／multi-zone、長時間負荷、本番traffic、30日SLO達成の実績ではない。制約の正本は[制約](docs/LIMITATIONS.md)に置く。
@@ -104,6 +104,8 @@ make cluster-down
 
 [`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。`artifact` stageはECR repositoryとlifecycle policyだけを作成し、時間課金の基盤resourceを作らない。`foundation` stageではECS serviceを0 taskに保ち、ECR imageのpushとdigest確認後の`runtime` stageだけが各serviceを起動する。修正後workerを含む3 ECS serviceのruntime検証は40秒でhealthyへ到達し、検証後はartifact stageへcleanupして課金resourceを残していない。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。詳細は[sanitized AWS evidence](docs/aws/runtime-evidence.json)を参照する。
 
+sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない。
+
 ```bash
 make terraform-validate
 ```
@@ -157,7 +159,7 @@ make clean-room
 
 ## GitHub Actions
 
-[ci.yml](.github/workflows/ci.yml)はpull requestとmainで`make verify`を実行し、その成功後に`make e2e-kind`を実行する。quality / security / chart gates、kind delivery and recovery E2E、cleanupはGitHub hosted Actionsで成功済み。成功時のfailure diagnostics uploadはskipとなる。
+[ci.yml](.github/workflows/ci.yml)はpull requestとmainで`make verify`を実行し、その成功後に`make e2e-kind`を実行する。記録済みのquality / security / chart gates、kind delivery and recovery E2E、cleanupのsuccessは公開mainの旧baselineに対するものであり、現在branchはPush後のPR CIで確認する。成功時のfailure diagnostics uploadはskipとなる。
 
 workflowはread-only permission、full commit SHAで固定したaction、secretを要求しないtriggerを使う。Hosted CIの成功はcloud productionや本番trafficの実績を意味しない。
 
