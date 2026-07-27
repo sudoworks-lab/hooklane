@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport
+from httpx import ASGITransport, MockTransport, Request, Response
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -105,6 +105,44 @@ async def test_worker_leaves_failed_delivery_pending(redis_client: Redis) -> Non
         assert status_record["attempt_count"] == "1"
         assert len(pending) == 1
         assert receipts.event_ids == frozenset()
+    finally:
+        await sink.close()
+        await redis_client.delete(store.stream_key, store.status_key(event_id))
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_mark_redirect_as_delivered(redis_client: Redis) -> None:
+    namespace = f"hooklane:test:{uuid4().hex}"
+    store = RedisEventStore(redis_client, namespace=namespace)
+    event_id = uuid4()
+
+    def redirect_response(request: Request) -> Response:
+        return Response(302, headers={"Location": "https://redirect.invalid"})
+
+    sink = MockSinkClient(
+        transport=MockTransport(redirect_response),
+    )
+    worker = EventWorker(store, sink)
+
+    try:
+        await store.enqueue(
+            event_id,
+            EventRequest(event_type="delivery.redirect", payload={"message": "redirect"}),
+        )
+        result = await worker.run_once()
+
+        status_record = await redis_client.hgetall(store.status_key(event_id))
+        pending = await redis_client.xpending_range(
+            store.stream_key,
+            "hooklane-workers",
+            min="-",
+            max="+",
+            count=10,
+        )
+
+        assert result is WorkerResult.FAILED_PENDING
+        assert status_record["status"] == "delivering"
+        assert len(pending) == 1
     finally:
         await sink.close()
         await redis_client.delete(store.stream_key, store.status_key(event_id))

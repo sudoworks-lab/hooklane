@@ -37,7 +37,7 @@ class DownstreamTargetConfig:
 def parse_redis_url(value: str) -> RedisConnectionConfig:
     """Validate a Redis URL without logging or reflecting its value."""
 
-    if not value or value != value.strip():
+    if not value or any(character.isspace() for character in value):
         raise RuntimeConfigurationError("Redis URL must be a non-empty URL")
     try:
         parsed = urlsplit(value)
@@ -47,6 +47,8 @@ def parse_redis_url(value: str) -> RedisConnectionConfig:
         raise RuntimeConfigurationError("Redis URL is invalid") from None
     if parsed.scheme not in {"redis", "rediss"} or hostname is None:
         raise RuntimeConfigurationError("Redis URL must use redis:// or rediss://")
+    if parsed.query or parsed.fragment:
+        raise RuntimeConfigurationError("Redis URL must not contain query or fragment")
     return RedisConnectionConfig(
         value=value,
         scheme=parsed.scheme,

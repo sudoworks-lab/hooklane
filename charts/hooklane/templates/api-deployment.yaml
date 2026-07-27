@@ -66,6 +66,7 @@ spec:
                   key: {{ .Values.config.redisURLSecret.key }}
                   optional: false
               {{- else }}
+              {{- include "hooklane.validateRedisURL" . }}
               value: {{ .Values.config.redisURL | quote }}
               {{- end }}
           ports:

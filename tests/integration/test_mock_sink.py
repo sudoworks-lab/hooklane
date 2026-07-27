@@ -8,7 +8,6 @@ from httpx import ASGITransport
 
 from hooklane.delivery.sink import (
     DELIVERY_GUARANTEE,
-    DELIVERY_TARGET_ALLOWLIST,
     DOWNSTREAM_DEDUPLICATION_KEY,
     MOCK_SINK_ORIGIN,
     MOCK_SINK_PATH,
@@ -43,7 +42,6 @@ async def test_mock_sink_deduplicates_at_least_once_delivery_by_event_id() -> No
     assert receipts.event_ids == frozenset({event.event_id})
     assert DELIVERY_GUARANTEE == "at-least-once"
     assert DOWNSTREAM_DEDUPLICATION_KEY == "event_id"
-    assert DELIVERY_TARGET_ALLOWLIST == frozenset({MOCK_SINK_ORIGIN})
     assert client.target_origin == MOCK_SINK_ORIGIN
     assert client.target_url == f"{MOCK_SINK_ORIGIN}{MOCK_SINK_PATH}"
 

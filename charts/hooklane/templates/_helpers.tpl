@@ -43,3 +43,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s:%s" .repository .tag -}}
 {{- end -}}
 {{- end }}
+
+{{- define "hooklane.validateRedisURL" -}}
+{{- $redisURL := .Values.config.redisURL | toString -}}
+{{- if not (or (hasPrefix "redis://" $redisURL) (hasPrefix "rediss://" $redisURL)) -}}
+{{- fail "config.redisURL must use redis:// or rediss://; use redisURLSecret for credentials" -}}
+{{- end -}}
+{{- if or (contains "@" $redisURL) (contains "?" $redisURL) (contains "#" $redisURL) (regexMatch "[[:space:]]" $redisURL) -}}
+{{- fail "config.redisURL must be credential-free and must not contain query, fragment, or whitespace; use redisURLSecret for credentials" -}}
+{{- end -}}
+{{- end }}

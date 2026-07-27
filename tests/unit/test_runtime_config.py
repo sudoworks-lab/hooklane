@@ -43,6 +43,40 @@ def test_redis_url_rejects_unsupported_scheme_without_reflection() -> None:
     assert marker not in str(error.value)
 
 
+@pytest.mark.parametrize(
+    "suffix",
+    (
+        "?ssl_cert_reqs=none",
+        "?ssl_check_hostname=false",
+        "?decode_responses=true",
+        "?password=secret-like-value",
+        "#fragment",
+    ),
+)
+def test_redis_url_rejects_query_and_fragment_without_reflection(suffix: str) -> None:
+    with pytest.raises(RuntimeConfigurationError) as error:
+        parse_redis_url(f"rediss://redis.example:6380/0{suffix}")
+
+    assert "secret-like-value" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "redis://redis.example:6380/0 with-space",
+        "redis://redis.example:not-a-port/0",
+        "memcached://redis.example:11211/0",
+    ),
+)
+def test_redis_url_rejects_whitespace_invalid_port_and_unsupported_scheme(
+    value: str,
+) -> None:
+    with pytest.raises(RuntimeConfigurationError) as error:
+        parse_redis_url(value)
+
+    assert value not in str(error.value)
+
+
 def test_downstream_default_is_the_existing_mock_sink() -> None:
     config = downstream_config_from_environment({})
 

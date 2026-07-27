@@ -14,7 +14,6 @@ from hooklane.runtime_config import (
 
 MOCK_SINK_ORIGIN = "http://hooklane-mock-sink:8080"
 MOCK_SINK_PATH = "/internal/deliveries"
-DELIVERY_TARGET_ALLOWLIST = frozenset({MOCK_SINK_ORIGIN})
 DELIVERY_GUARANTEE = "at-least-once"
 DOWNSTREAM_DEDUPLICATION_KEY = "event_id"
 
@@ -77,6 +76,12 @@ class MockSinkClient:
         except RequestError:
             raise DeliveryFailed(DeliveryErrorClass.CONNECTION) from None
 
+        if 200 <= response.status_code < 300:
+            return
+        if 100 <= response.status_code < 200:
+            raise DeliveryFailed(DeliveryErrorClass.HTTP_1XX)
+        if 300 <= response.status_code < 400:
+            raise DeliveryFailed(DeliveryErrorClass.HTTP_3XX)
         if response.status_code == 429:
             raise DeliveryFailed(DeliveryErrorClass.HTTP_429)
         if response.status_code >= 500:
