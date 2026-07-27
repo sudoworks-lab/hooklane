@@ -14,7 +14,7 @@
 
 `make verify`はsyntax／configuration check、Ruff、strict mypy、unit／integration test、security scan、Helm／Kubernetes validation、文書contractを集約する。全ての構成commandがsuccessであることを受け入れ条件とする。
 
-`make terraform-validate`はTerraform foundationのresource、security group、secret output、cost default、rollback contractをcredential-freeで検証する。Terraform CLIがない環境ではHCL syntaxのCLI検証を行わず、AWS APIにも接続しない。
+`make terraform-validate`はTerraform foundationのresource、security group、secret output、cost default、rollback contractをcredential-freeで検証する。通常のlocal環境でTerraform CLIがない場合は`[degraded]`と表示し、CIではTerraform 1.15.5を公式checksum検証付きで導入したうえでCLI検証を必須にする。AWS APIには接続しない。
 
 ## runtime検証
 
@@ -65,6 +65,7 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 ## 実証済みの事実
 
 - localのquality、security、documentation、Helm、Compose、kind、rollout、observability、incident contractはpass
+- 修正後AWS runtimeのsanitized machine-readable evidenceは[`docs/aws/runtime-evidence.json`](aws/runtime-evidence.json)に保存し、SHA-256は`a3d81f8e186a8be7386fe5fe091e1285c971fb41107fa9fe00881b90a61ff8ff`である。account metadata、ARN、credential、Redis URL、payload、Idempotency-Key生値は含めない
 - 配送はat-least-onceであり、downstreamへのattemptが重複し得る
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
@@ -75,11 +76,10 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 同じcommit固定tagで生成した`foundation` stageのread-only planは`create=49`、`update=0`、`delete=0`で、既存ECR 6 resourceのmutationは0、API／worker／mock sinkのECS desired countは全て0である。明示承認の下でapplyし、途中でCloud Map A recordに不要なECS container name/portを指定したためmock sink serviceだけが`InvalidParameter`で失敗した。A record contractに合わせてその指定を削除し、最終的なfoundation convergence planが`create=0`、`update=0`、`delete=0`となることを確認した
 - foundationの実AWS構成はVPC、public/private subnet各2、NAT Gatewayなし、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、ALB、Valkey 7.2系 single node、CloudWatch Logs 3 group、Secrets Manager secret、IAM、Cloud Map、ECS service 3件を含む。ALB ingressは`192.0.2.1/32` sentinelだけで、ECS serviceは全て`desired/running/pending = 0/0/0`、running/stopped Fargate taskは0件である
 - 2026-07-27 JSTに、Human承認済みの単一IPv4 `/32`だけをALB ingressへ設定した`runtime` stageを実行した。最初のexact planは`create=0`、`update=4`、`delete=0`で、API、worker、mock sinkのdesired countを0から1へ変え、ALB ingress sentinelを置換するものだった。同じartifactのapply後、ALB security groupにAPI targetへのegressがないことを確認し、API security groupのTCP/8080だけへ限定したegress ruleを追加する`create=0`、`update=1`、`delete=0`のexact planをapplyした
-- egress修正後、ALB target、API task、mock sink taskはhealthyになった。一方workerはECS startup health checkのfailureで置換を繰り返し、stableな`desired/running/pending = 1/1/0`へ収束しなかった。structured CloudWatch Logsには`worker_started`と`worker_stopped`だけが記録され、application errorを根拠にした原因特定はできなかった。後続のローカルDocker再現で、Redis接続不能時にもworker processと`9090` metrics surfaceは生存する一方、当時のECS `startup` health commandだけがnon-zeroになることを確認した。ECS／Composeのlivenessをlocal metrics probeへ修正したが、修正後のAWS runtimeは未実証である。このためnormal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drillは実行していない
+- 初回runtimeでは修正前のECS startup health contractがworker replacementを引き起こした。ローカルDocker再現で、Redis接続不能時にもworker processと`9090` metrics surfaceは生存する一方、旧health commandだけがnon-zeroになることを確認し、worker livenessをlocal metrics probeへ修正した。この初回failureは後続の修正後runtimeで解消を確認した。
 - cost controlのためECS service 3件を`desired_count = 0`へ戻す`create=0`、`update=3`、`delete=0`のexact planをapplyした。その後artifact stageへのcleanup plan（`create=0`、`update=0`、`delete=49`）をapplyし、ALB、Valkey、VPC endpoint、VPC、ECS、Cloud Map、IAM、Secrets Manager、CloudWatch Logsを削除した。post-cleanupのactual backend artifact planは`create=0`、`update=0`、`delete=0`である。remote state bootstrap S3 bucket、ECR repository 3件、lifecycle policy 3件、approved image 3件は保持されている
 - 2026-07-27 JSTにG2.9のworker liveness修正を含むfoundationを再作成した。保存済みexact planは`create=49`、`update=0`、`delete=0`であり、apply wrapperのreceiptは保存されなかったが、Terraform processの完了後にactual backendをrefreshしたconvergence planが`create=0`、`update=0`、`delete=0`となることを確認した。実AWSでVPC、ALB、Valkey、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、CloudWatch Logs 3 group、Secrets Manager secret、Cloud Map、IAM、ECS service 3件を確認した
-- 再作成したworker task definitionは`CMD-SHELL`のlocalhost metrics probeを使い、`interval=30`、`timeout=5`、`retries=3`、`startPeriod=30`である。API／worker／mock sinkは全て`desired/running/pending = 0/0/0`で、running/stopped Fargate taskは0件だった。ALB ingressは引き続き`192.0.2.1/32` sentinelだけであり、runtime applyは実行していない
-- foundation stateから生成したruntime read-only planは`create=0`、`update=3`、`delete=0`で、API／worker／mock sinkのECS desired countだけを`0`から`1`へ変更する。task definition、image tag、ECR、network、ALB、Valkey、IAM、secretの置換またはmutationは含まれない。runtime applyにはHuman承認済みIPv4 `/32`が別途必要である
+- 修正後worker task definitionは`CMD-SHELL`のlocalhost metrics probeを使い、`interval=30`、`timeout=5`、`retries=3`、`startPeriod=30`である。foundationではAPI／worker／mock sinkを全て`desired/running/pending = 0/0/0`に保ち、runtime planはtask definition、image tag、ECR、network、ALB、Valkey、IAM、secretの置換を含まないことを確認した。
 - 2026-07-27 JSTに、Human承認済みの単一IPv4 `/32`を使う修正後の`runtime` stageを実行した。保存済みexact planは`create=0`、`update=4`、`delete=0`で、API／worker／mock sinkのdesired countを`0`から`1`へ変更し、ALB ingressをsentinelから承認済みCIDRへ置換するものだった。apply後40秒で3 serviceは全て`desired/running/pending = 1/1/0`、worker container healthはhealthy、API targetはhealthyとなった。既存のcommit固定ECR imageを再利用し、新しいimage buildまたはpushは行っていない
 - 同runtimeではALB経由のdummy eventが`202 Accepted`後にattempt 1で`delivered`となること、同一idempotency keyと同一requestが同じevent IDを返すこと、同一keyと異なるrequestが`409 Conflict`となることを確認した。event payload、idempotency keyの生値、credential、Redis URLはevidenceへ保存していない
 - controlled mock sinkを既存の`server_error` modeへ一時的に切り替え、HTTP 503に対するretry schedule、attempt増加、attempt 5での`dead_letter`を確認した。正常modeへ戻した後の新規eventはattempt 1で`delivered`となった。一方、同一retry eventが途中でsuccessへ遷移する経路はこの実行では確認していない

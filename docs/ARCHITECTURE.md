@@ -54,7 +54,7 @@ idempotencyはAPI受付の重複抑止であり、worker配送のexactly-once保
 
 配送保証はat-least-once。workerがdownstream side effect後かつRedis ack前に停止すると、同じevent IDを再配送し得る。downstreamはevent IDを重複排除キーとして扱い、同じIDのside effectを一度だけ適用する責務を持つ。この判断は[ADR 0001](adr/0001-redis-streams-at-least-once.md)に記録する。
 
-timeout、connection failure、HTTP 429、HTTP 5xxはretryableとし、bounded exponential backoffとjitterを使う。HTTP 4xxはnon-retryable。retry policyの上限を超えたeventはdead-letterへ移す。arbitrary exception messageは外部responseやstructured logへ流さず、有限集合の`reason_code`へ分類する。
+timeout、connection failure、HTTP 429、HTTP 5xxはretryableとし、bounded exponential backoffとjitterを使う。HTTP 3xxとその他のHTTP 4xxはexplicit failureとしてnon-retryable。HTTP 2xxだけをdelivery successとし、redirectを自動追跡して成功扱いにはしない。retry policyの上限を超えたeventはdead-letterへ移す。arbitrary exception messageは外部responseやstructured logへ流さず、有限集合の`reason_code`へ分類する。
 
 ## pending message回収
 
@@ -85,7 +85,7 @@ local image buildとkind loadだけを使い、external registryへpushしない
 
 ### AWS Terraform foundation
 
-[`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。`artifact` stageのECR repositoryとlifecycle policyは作成済みで、commit 固定 tagの3 imageをpush済みである。`foundation` stageと`runtime` stageは明示承認下で一度実行し、終了後にartifact stageへcleanupした。runtimeではAPI、mock sink、ALB targetはhealthyになったが、workerはRedis依存のECS health checkにより置換を繰り返した。ローカルDocker再現によりworker processとmetrics portが生存することを確認し、ECS health checkをlocal metrics liveness probeへ修正した。修正後のAWS runtimeは未実証である。APIはALB、workerとmock sinkはprivate service discovery、Redisはprivate ElastiCache endpointを使う。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義する。
+[`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。`artifact` stageのECR repositoryとlifecycle policy、`foundation` stage、`runtime` stageを明示承認下で実行し、runtime検証後にartifact stageへcleanupした。修正後workerを含む3 ECS serviceは40秒で`1/1/0`へ到達し、worker health、ALB target、normal delivery、idempotency、503 retry、attempt 5のdead-letter、graceful worker replacement、image-pull failure時のhealthy target維持を確認した。未確認事項は[制約](LIMITATIONS.md)と[sanitized AWS evidence](aws/runtime-evidence.json)に固定する。APIはALB、workerとmock sinkはprivate service discovery、Redisはprivate ElastiCache endpointを使う。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義する。
 
 ## observability
 
@@ -109,7 +109,7 @@ GitHub hosted Actionsではquality / security / chart gatesとkind delivery and 
 主なboundaryはclientからAPI、workerからdownstream、PodからRedis、Prometheusからapplication metrics。
 
 - client inputは信頼せずAPI schemaで検証する。authenticationとtenant authorizationは実装しない
-- downstream destinationは`HOOKLANE_DOWNSTREAM_URL`で起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う
+- downstream destinationは`HOOKLANE_DOWNSTREAM_URL`でoperatorが起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う。requestごとの宛先選択を行わず、startup configurationをoperator-controlled boundaryとして扱う
 - Redis connection情報はKubernetes Secretの`secretKeyRef`またはTerraformで定義するSecrets Managerからtaskへ注入できる。`redis://`と`rediss://`を扱い、ConfigMap、log、metric、diagnosticsへRedis URLを出さない
 - PrometheusのServiceAccount tokenはautomatic mountを無効にし、namespace内Pod discoveryに必要なshort-lived projected tokenとread-only Roleだけを与える
 - Grafanaのanonymous Viewerはcluster-localに限定し、外部公開portを持たない

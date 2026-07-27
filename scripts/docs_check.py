@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 from typing import Never
@@ -15,6 +16,7 @@ README = ROOT / "README.md"
 DEMO = ROOT / "docs" / "DEMO.md"
 DEVELOPMENT = ROOT / "docs" / "DEVELOPMENT.md"
 RELEASE_EVIDENCE = ROOT / "docs" / "RELEASE_EVIDENCE.md"
+AWS_RUNTIME_EVIDENCE = ROOT / "docs" / "aws" / "runtime-evidence.json"
 RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.1.md"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 LICENSE = ROOT / "LICENSE"
@@ -266,6 +268,66 @@ def validate_release_evidence_contract() -> None:
         fail("release evidence disagrees with feature state")
 
 
+def validate_current_aws_evidence_contract() -> None:
+    if not AWS_RUNTIME_EVIDENCE.is_file():
+        fail("sanitized AWS runtime evidence is missing")
+    try:
+        evidence: object = json.loads(AWS_RUNTIME_EVIDENCE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        fail("sanitized AWS runtime evidence is not valid JSON")
+    if not isinstance(evidence, dict):
+        fail("sanitized AWS runtime evidence must be a JSON object")
+    required = (
+        "schema_version",
+        "source_commit",
+        "image_source_commit",
+        "image_digests",
+        "region",
+        "runtime_plan",
+        "healthy_after_seconds",
+        "scenario_outcomes",
+        "cleanup_plan",
+        "retained_resources",
+        "verified",
+        "unverified",
+        "secret_free",
+    )
+    for key in required:
+        if key not in evidence:
+            fail(f"sanitized AWS runtime evidence is missing: {key}")
+    if evidence.get("secret_free") is not True:
+        fail("sanitized AWS runtime evidence must declare secret_free=true")
+    runtime_plan = evidence.get("runtime_plan")
+    cleanup_plan = evidence.get("cleanup_plan")
+    if runtime_plan != {"create": 0, "update": 4, "delete": 0}:
+        fail("sanitized AWS runtime evidence has an unexpected runtime plan")
+    if cleanup_plan != {"create": 0, "update": 0, "delete": 49}:
+        fail("sanitized AWS runtime evidence has an unexpected cleanup plan")
+
+    current_state_documents = (
+        README,
+        ROOT / "infra" / "README.md",
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "SECURITY.md",
+        ROOT / "docs" / "LIMITATIONS.md",
+        RELEASE_EVIDENCE,
+    )
+    stale_claims = (
+        "修正後のAWS runtimeは未実証",
+        "runtime AWS apply、ECS task secret injectionの実行",
+        "runtime applyは実行していない",
+        "runtimeのhealthy delivery verificationはworker health failureにより未完了",
+    )
+    for document in current_state_documents:
+        text = document.read_text(encoding="utf-8")
+        for claim in stale_claims:
+            if claim in text:
+                fail(
+                    "current-state documentation retains a stale AWS failure claim: "
+                    f"{document.relative_to(ROOT)}"
+                )
+
+
 def validate_metadata_contract() -> None:
     project = PYPROJECT.read_text(encoding="utf-8")
     chart = CHART.read_text(encoding="utf-8")
@@ -354,6 +416,7 @@ def run_checks() -> None:
     validate_readme_contract()
     validate_demo_contract()
     validate_release_evidence_contract()
+    validate_current_aws_evidence_contract()
     validate_metadata_contract()
     validate_license_and_notices_contract()
     validate_public_claims()

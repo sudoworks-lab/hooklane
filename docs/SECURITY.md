@@ -18,11 +18,11 @@ authentication、authorization、encryption termination、DDoS protection、supp
 
 repositoryは実値credentialを保持せず、`.env.example`はempty placeholderだけを許可する。contractは`make env-example-check`で検証する。secret値、`.env`値、cookie、private key、token、personal informationをlog、metric、diagnostics、test artifactへ出さない。
 
-KubernetesではRedis connection設定をSecret resourceの`secretKeyRef`からPodへ注入できる。Terraform foundationでは同じ境界をAWS Secrets ManagerとECS task secret injectionで定義する。remote state bootstrap S3 bucket、artifact stageのECR、ECS taskを0 taskに保つfoundation stageは明示承認の下で作成・security contractを検証した。runtime AWS apply、ECS task secret injectionの実行、rotation、Secret lifecycleは未実証である。Secret objectの値をdocumentationやdiagnosticsへ展開せず、既定のlocal fallbackはcredentialを要求せず、ConfigMapへRedis URLを配置しない。
+KubernetesではRedis connection設定をSecret resourceの`secretKeyRef`からPodへ注入できる。Terraform foundationでは同じ境界をAWS Secrets ManagerとECS task secret injectionで定義する。remote state bootstrap S3 bucket、artifact stageのECR、ECS taskを0 taskに保つfoundation stage、runtime taskへのSecret injectionは明示承認の下で作成・security contractを検証した。rotation、Secret lifecycle、長期接続安定性は未実証である。Secret objectの値をdocumentationやdiagnosticsへ展開せず、既定のlocal fallbackはcredentialを要求せず、ConfigMapへRedis URLを配置しない。
 
 ## requestとlogの扱い
 
-APIはrequest schemaと`Idempotency-Key` lengthをsystem boundaryで検証する。downstream URLはrequestから受け取らず、起動時environmentのcontrolled endpointだけを使用する。未指定時はproject-owned mock sinkを使い、URL内credentialは拒否する。
+APIはrequest schemaと`Idempotency-Key` lengthをsystem boundaryで検証する。downstream URLはrequestから受け取らず、起動時environmentのoperator-controlled endpointだけを使用する。未指定時はproject-owned mock sinkを使い、URL内credentialは拒否する。requestごとの配送先選択は行わない。
 
 API、worker、mock sinkは共通のstructured JSON log contractを使う。許可fieldはtimestamp、level、service、event、request ID、event ID、attempt、status、outcome、reason code、durationなどに限定する。
 

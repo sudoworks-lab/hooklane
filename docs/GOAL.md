@@ -49,7 +49,7 @@
 - アプリケーションはPythonとFastAPIを使用し、queue/status storeにはRedisを使用する。
 - ローカルKubernetesはkind、パッケージングはHelm、metricsはPrometheus、dashboardはGrafanaを使用する。
 - exact versionは導入環境を確認して固定し、container imageやtoolに`latest` tagを使用しない。
-- runtimeは外部クラウド、外部SaaS、実credentialを必要としない。配送先は同一プロジェクト内のmock sinkまたは明示allowlistに限定する。
+- runtimeは外部クラウド、外部SaaS、実credentialを必要としない。配送先は同一プロジェクト内のmock sinkをdefaultとし、必要なcontrolled endpointへの切替はoperator-controlledなstartup configurationだけで行う。requestから配送先を変更しない。
 - 配送保証はat-least-onceと明記し、重複配送の可能性とdownstream側のevent IDによる重複排除方針を説明する。
 - livenessは外部依存の一時障害を直接条件にしない。readinessは新規処理を安全に受け付けられるかで判定する。
 - payload本文、secret、credential、Redis password、個人情報をログ、fixture、artifact、commitへ含めない。

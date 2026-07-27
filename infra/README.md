@@ -1,6 +1,6 @@
 # Hooklane AWS deployment foundation
 
-このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucket、artifact stageのECR repository／lifecycle policy、ECS serviceを0 taskに保つnetwork/foundation resourceは別の明示承認で作成・検証済みである。runtime resourceのdesired count 1へのapplyとtask runtime verificationは未実施である。
+このdirectoryは、Hooklane v0.1.1を一つのAWS regionへ展開するためのTerraform deployment stageを定義する。remote state用bootstrap S3 bucket、artifact stageのECR repository／lifecycle policy、ECS serviceを0 taskに保つnetwork/foundation resource、desired count 1のruntime検証は別の明示承認で実行・検証済みである。runtime検証後はartifact stageへcleanupし、bootstrap S3とECR artifactだけを保持している。
 
 ## 構成
 
@@ -50,7 +50,7 @@ AWS credentialを必要としないvalidationはrepository rootから実行す�
 make terraform-validate
 ```
 
-Terraform CLIがある環境では、このtargetは`terraform fmt -check -recursive`、`terraform init -backend=false`、`terraform validate`も実行する。CLIがない環境では、静的なresource、security、secret-output、cost-default contractだけを検証し、Terraform syntaxの実証は未実行として報告する。provider downloadが必要な場合もbackendやAWS APIは使用しない。
+Terraform CLIがある環境では、このtargetは`terraform fmt -check -recursive`、`terraform init -backend=false`、`terraform validate`も実行する。CLIがない通常のlocal環境では、静的なresource、security、secret-output、cost-default contractだけを検証し、`[degraded]`として明示する。CIではTerraform CLIを必須とし、未導入を成功扱いにしない。provider downloadが必要な場合もbackendやAWS APIは使用しない。
 
 Dockerが利用可能な環境では、worker ECS liveness contractを次で再現できる。これはdisposable local Redisとworker containerを起動し、Redis接続不能時にもlocal metrics livenessが維持され、SIGTERMで`worker_stopped`が記録されることを確認してcleanupする。AWS credential、AWS resource、Redis connection valueは使用・出力しない。
 
@@ -88,11 +88,11 @@ AWS resourceのapplyは人間承認された段階だけで実行する。順序
 6. `deployment_stage = "foundation"`でfoundation applyを行う。ECS serviceのeffective desired countは0であり、image pullは開始しない。
 7. `deployment_stage = "runtime"`でruntime applyを行う。`desired_count = 1`なら各serviceが1 taskになる。
 8. ALB health check、API readiness、worker delivery、mock sink、CloudWatch Logsをruntime verificationする。
-9. 必要時はroot moduleをdestroyし、bootstrap bucketはstate移行または不要判断後に別途destroyする。
+9. runtime verification後はroot moduleをartifact stageへ戻してfoundation resourceをcleanupし、bootstrap bucketとECR artifactを保持する。bootstrap bucketはstate移行または不要判断後に別途destroyする。
 
 `deployment_stage = "runtime"`をimage push前にapplyしてはならない。ALB ingressの`192.0.2.1/32`、bootstrap bucket name、Redis AUTH tokenはHuman input境界であり、自動生成・自動置換しない。
 
-`terraform apply`はこのGoalの停止境界であり、明示的なHuman approvalがない限り実行しない。
+`terraform apply`はHuman approvalの停止境界であり、runtimeではcommit固定image tagとHuman承認CIDRが必須である。検証済みruntimeは同じ作業枠でartifact stageへcleanupする。
 
 ## Cost-conscious defaults
 

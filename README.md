@@ -102,13 +102,13 @@ make cluster-down
 
 ## AWS Terraform foundation
 
-[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。`artifact` stageはECR repositoryとlifecycle policyだけを作成し、時間課金の基盤resourceを作らない。`foundation` stageではECS serviceを0 taskに保ち、ECR imageのpushとdigest確認後の`runtime` stageだけが各serviceを起動する。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。
+[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。`artifact` stageはECR repositoryとlifecycle policyだけを作成し、時間課金の基盤resourceを作らない。`foundation` stageではECS serviceを0 taskに保ち、ECR imageのpushとdigest確認後の`runtime` stageだけが各serviceを起動する。修正後workerを含む3 ECS serviceのruntime検証は40秒でhealthyへ到達し、検証後はartifact stageへcleanupして課金resourceを残していない。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。詳細は[sanitized AWS evidence](docs/aws/runtime-evidence.json)を参照する。
 
 ```bash
 make terraform-validate
 ```
 
-これはcredential-freeの静的contractであり、Terraform CLIがある環境ではfmt、backend無効init、validateも行う。AWS apply、ECR push、cloud runtime verificationは実行しない。
+これはcredential-freeの静的contractであり、Terraform CLIがある環境ではfmt、backend無効init、validateも行う。AWS apply、ECR push、cloud runtime verificationを行うcommandではない。
 
 ## 監視
 

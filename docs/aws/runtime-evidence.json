@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "source_commit": "50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e",
+  "image_source_commit": "5a2c3cd7e99fda46b9622abea30e40eb4c91dca9",
+  "image_tag": "git-5a2c3cd7e99fda46b9622abea30e40eb4c91dca9",
+  "image_digests": {
+    "api": null,
+    "worker": "sha256:342fe072fc810ac369412d38acd9cac5410a13e69d4700f71e661b74733269b6",
+    "mock_sink": null
+  },
+  "image_digest_boundary": "API and mock sink digest values were not present in the tracked public evidence and are intentionally unconfirmed here.",
+  "region": "ap-northeast-1",
+  "runtime_plan": {
+    "create": 0,
+    "update": 4,
+    "delete": 0
+  },
+  "healthy_after_seconds": 40,
+  "scenario_outcomes": {
+    "three_services_healthy": true,
+    "worker_health": true,
+    "normal_delivery": true,
+    "idempotency_same_event": true,
+    "idempotency_conflict_409": true,
+    "http_503_retry_schedule": true,
+    "attempt_increase": true,
+    "attempt_5_dead_letter": true,
+    "graceful_worker_replacement": true,
+    "image_pull_failure_detection": true,
+    "healthy_target_maintained": true
+  },
+  "cleanup_plan": {
+    "create": 0,
+    "update": 0,
+    "delete": 49
+  },
+  "cleanup_convergence": {
+    "create": 0,
+    "update": 0,
+    "delete": 0
+  },
+  "retained_resources": {
+    "remote_state": ["S3 bucket"],
+    "artifacts": [
+      "ECR repository: api",
+      "ECR repository: worker",
+      "ECR repository: mock sink",
+      "approved immutable image tag"
+    ]
+  },
+  "deleted_resource_classes": [
+    "ALB",
+    "Valkey",
+    "VPC endpoints",
+    "VPC and subnets",
+    "ECS services and tasks",
+    "CloudWatch Logs",
+    "Secrets Manager secret",
+    "IAM roles",
+    "Cloud Map"
+  ],
+  "verified": [
+    "worker health",
+    "normal delivery",
+    "idempotency convergence and conflict",
+    "retry schedule and attempt increase",
+    "dead-letter at attempt 5",
+    "graceful worker replacement",
+    "image-pull failure detection with healthy target maintained",
+    "artifact-stage cleanup convergence"
+  ],
+  "unverified": [
+    "same retry event eventual success",
+    "AWS pending recovery",
+    "in-flight work graceful shutdown",
+    "automatic rollback completion",
+    "long-running stability",
+    "ECR Basic Scan severity"
+  ],
+  "secret_free": true
+}

@@ -45,7 +45,7 @@ Hooklaneは、Webhook受付、Redis Streams queue、at-least-once配送、observ
 - API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない
 - Kubernetes NetworkPolicy、ingress TLS、egress firewallは対象外
 - Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない
-- remote state bootstrap S3 bucket、ECR artifact stage、foundation stage、runtime stageを明示承認の下で実行した。runtimeではALB target、API task、mock sink taskがhealthyになったが、workerはRedis依存のECS startup health check failureで置換を繰り返したため、delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、rollback drillはAWS上で未検証である。ローカルDocker再現でworker processとmetrics portがRedis停止中も生存することを確認し、ECS／Composeのworker livenessをlocal metrics probeへ修正したが、修正後のAWS runtimeは未実証である。実行後はartifact stageへ戻し、bootstrap S3、ECR repository、lifecycle policy、approved image以外のAWS resourceを削除した。AWS Secrets Managerのsecret valueは閲覧していない。secret rotation、Secret lifecycle、worker／Valkey接続の安定性は未実証である。ECR Basic scanはapproved tagへのmanual要求が`UNSUPPORTED`であり、severity結果、image signing、SBOM attestationは未実証である
+- remote state bootstrap S3 bucket、ECR artifact stage、foundation stage、runtime stageを明示承認の下で実行した。修正後workerを含む3 ECS serviceは40秒で`1/1/0`へ到達し、worker health、normal delivery、idempotencyの同一event収束と409、HTTP 503 retry scheduleとattempt増加、attempt 5のdead-letter、graceful worker replacement、image-pull failure検出とhealthy target維持を確認した。AWS上の同一retry eventのeventual success、pending recovery、in-flight workのgraceful shutdown、automatic rollback完了、long-running stabilityは未確認である。実行後はartifact stageへ戻し、bootstrap S3、ECR repository、lifecycle policy、approved image以外のAWS resourceを削除した。AWS Secrets Managerのsecret valueは閲覧していない。secret rotation、Secret lifecycle、worker／Valkey接続の長期安定性は未実証である。ECR Basic scanはapproved tagへのmanual要求が`UNSUPPORTED`であり、severity結果、image signing、SBOM attestationは未実証である
 - Redisにapplication payloadを保存するため、本番導入前にdata classification、retention、backup、encryptionを設計する必要がある
 - scanner databaseの更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない
 
@@ -58,7 +58,7 @@ security controlと残存riskの詳細は[security](SECURITY.md)を参照する�
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
 - prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildする
-- ECR artifact stageはapply済みで、commit固定tagの3 imageをprivate ECRへpush済みである。foundationとruntime applyは実行後にartifact stageへcleanup済みであり、bootstrap S3、ECR repository、lifecycle policy、approved imageだけを保持する。runtimeのhealthy delivery verificationはworker health failureにより未完了である。release publishingとcloud deployment automationは実行していない
+- ECR artifact stageはapply済みで、commit固定tagの3 imageをprivate ECRへpush済みである。foundationとruntime applyは実行後にartifact stageへcleanup済みであり、bootstrap S3、ECR repository、lifecycle policy、approved imageだけを保持する。runtimeの短時間verificationは完了したが、production、external downstream、HA、autoscaling、OpenTelemetry、long-running stabilityは実証していない。release publishingとcloud deployment automationは実行していない
 - generated dependency lockとpinned imageは再現性を高めるが、reproducible-build attestationを提供しない
 
 versionと第三者softwareの確認範囲は[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)を参照する。
