@@ -1,6 +1,18 @@
 resource "aws_security_group" "alb" {
   count = local.foundation_stage_enabled ? 1 : 0
 
+  lifecycle {
+    precondition {
+      condition = var.deployment_stage != "runtime" || alltrue([
+        for cidr in var.alb_ingress_cidr_blocks : !contains(
+          ["192.0.2.1/32", "0.0.0.0/0", "::/0"],
+          cidr,
+        )
+      ])
+      error_message = "runtime ALB ingress requires a Human-approved CIDR and must not use the sentinel or an unrestricted CIDR."
+    }
+  }
+
   name        = "${local.name}-alb"
   description = "Public ALB ingress for Hooklane API only."
   vpc_id      = aws_vpc.main[0].id

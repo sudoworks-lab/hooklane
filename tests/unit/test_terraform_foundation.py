@@ -12,6 +12,15 @@ def test_bootstrap_uses_sse_s3_without_bucket_key() -> None:
     assert "bucket_key_enabled" not in source
     assert "force_destroy = var.force_destroy" in source
 
+    variables = (INFRA / "bootstrap" / "variables.tf").read_text(encoding="utf-8")
+    example = (INFRA / "bootstrap" / "terraform.tfvars.example").read_text(
+        encoding="utf-8"
+    )
+    bucket_variable = variables.split('variable "bucket_name" {', maxsplit=1)[1]
+    bucket_variable = bucket_variable.split("\n}", maxsplit=1)[0]
+    assert "default" not in bucket_variable
+    assert 'bucket_name = "hooklane-dev-terraform-state-plan-only"' in example
+
 
 def test_artifact_stage_keeps_non_ecr_resources_out_of_the_first_apply() -> None:
     variables = (INFRA / "variables.tf").read_text(encoding="utf-8")
@@ -110,3 +119,19 @@ def test_alb_egress_is_limited_to_the_api_target_port() -> None:
     assert 'to_port         = 8080' in alb_security_group
     assert 'security_groups = [aws_security_group.api[0].id]' in alb_security_group
     assert 'cidr_blocks      = ["0.0.0.0/0"]' not in alb_security_group
+
+
+def test_runtime_apply_guards_reject_ambiguous_image_and_ingress() -> None:
+    variables = (INFRA / "variables.tf").read_text(encoding="utf-8")
+    locals_source = (INFRA / "locals.tf").read_text(encoding="utf-8")
+    security_source = (INFRA / "security.tf").read_text(encoding="utf-8")
+    ecs_source = (INFRA / "ecs.tf").read_text(encoding="utf-8")
+    example = (INFRA / "terraform.tfvars.example").read_text(encoding="utf-8")
+
+    assert "^git-[0-9a-f]{40}$" in locals_source
+    assert "runtime_image_tag_valid" in ecs_source
+    assert 'var.deployment_stage != "runtime"' in ecs_source
+    assert '"192.0.2.1/32", "0.0.0.0/0", "::/0"' in security_source
+    assert 'var.deployment_stage != "runtime"' in security_source
+    assert 'image_tag              = "git-0000000000000000000000000000000000000000"' in example
+    assert 'default     = "0.1.1"' in variables

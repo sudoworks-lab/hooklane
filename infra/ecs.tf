@@ -53,6 +53,13 @@ resource "aws_service_discovery_service" "mock_sink" {
 resource "aws_ecs_task_definition" "api" {
   count = local.foundation_stage_enabled ? 1 : 0
 
+  lifecycle {
+    precondition {
+      condition     = var.deployment_stage != "runtime" || local.runtime_image_tag_valid
+      error_message = "runtime requires an immutable git-<40-hex-commit> image_tag."
+    }
+  }
+
   family                   = "${local.name}-api"
   cpu                      = var.task_cpu
   memory                   = var.task_memory
@@ -109,6 +116,13 @@ resource "aws_ecs_task_definition" "api" {
 
 resource "aws_ecs_task_definition" "worker" {
   count = local.foundation_stage_enabled ? 1 : 0
+
+  lifecycle {
+    precondition {
+      condition     = var.deployment_stage != "runtime" || local.runtime_image_tag_valid
+      error_message = "runtime requires an immutable git-<40-hex-commit> image_tag."
+    }
+  }
 
   family                   = "${local.name}-worker"
   cpu                      = var.task_cpu
@@ -170,6 +184,13 @@ resource "aws_ecs_task_definition" "worker" {
 
 resource "aws_ecs_task_definition" "mock_sink" {
   count = local.foundation_stage_enabled ? 1 : 0
+
+  lifecycle {
+    precondition {
+      condition     = var.deployment_stage != "runtime" || local.runtime_image_tag_valid
+      error_message = "runtime requires an immutable git-<40-hex-commit> image_tag."
+    }
+  }
 
   family                   = "${local.name}-mock-sink"
   cpu                      = var.task_cpu

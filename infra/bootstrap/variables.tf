@@ -7,7 +7,6 @@ variable "aws_region" {
 variable "bucket_name" {
   description = "Globally unique S3 bucket name. Replace the plan-only example before apply."
   type        = string
-  default     = "hooklane-dev-terraform-state-plan-only"
 
   validation {
     condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name))

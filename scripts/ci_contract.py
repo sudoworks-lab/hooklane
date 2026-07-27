@@ -77,6 +77,9 @@ def validate_quality_job(workflow: dict[str, object]) -> None:
         raise ContractError("quality job requires a bounded timeout")
     if "permissions" in quality:
         raise ContractError("quality job must not expand top-level permissions")
+    quality_environment = object_dict(quality.get("env"), "quality environment")
+    if quality_environment.get("HOOKLANE_TERRAFORM_REQUIRED") != "1":
+        raise ContractError("quality job must require Terraform instead of allowing a skip")
 
     steps = object_list(quality.get("steps"), "quality steps")
     action_references: list[str] = []
@@ -100,7 +103,7 @@ def validate_quality_job(workflow: dict[str, object]) -> None:
     if len(action_references) != 2:
         raise ContractError("baseline workflow must use checkout and setup-python only")
     combined_commands = "\n".join(run_commands)
-    for required in ("make ci-setup", "make verify"):
+    for required in ("make ci-setup", "terraform version", "make verify"):
         if required not in combined_commands:
             raise ContractError(f"workflow does not call local target: {required}")
 

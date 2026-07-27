@@ -9,6 +9,7 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,9 +26,26 @@ class ToolSpec:
     checksum_url: str
     archive_member: str | None
     version_arguments: tuple[str, ...]
+    archive_format: str | None = None
 
 
 TOOLS = (
+    ToolSpec(
+        name="terraform",
+        version="1.15.5",
+        asset="terraform_1.15.5_linux_amd64.zip",
+        asset_url=(
+            "https://releases.hashicorp.com/terraform/1.15.5/"
+            "terraform_1.15.5_linux_amd64.zip"
+        ),
+        checksum_url=(
+            "https://releases.hashicorp.com/terraform/1.15.5/"
+            "terraform_1.15.5_SHA256SUMS"
+        ),
+        archive_member="terraform",
+        version_arguments=("version",),
+        archive_format="zip",
+    ),
     ToolSpec(
         name="gitleaks",
         version="8.30.1",
@@ -155,6 +173,12 @@ def published_checksum(data: bytes, asset: str) -> str:
 def binary_from_asset(spec: ToolSpec, asset_data: bytes) -> bytes:
     if spec.archive_member is None:
         return asset_data
+    if spec.archive_format == "zip":
+        with zipfile.ZipFile(io.BytesIO(asset_data)) as archive:
+            try:
+                return archive.read(spec.archive_member)
+            except KeyError as error:
+                raise RuntimeError(f"binary member missing for {spec.name}") from error
     with tarfile.open(fileobj=io.BytesIO(asset_data), mode="r:gz") as archive:
         try:
             member = archive.getmember(spec.archive_member)

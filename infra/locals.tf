@@ -3,6 +3,7 @@ locals {
 
   foundation_stage_enabled = contains(["foundation", "runtime"], var.deployment_stage)
   runtime_stage_enabled    = var.deployment_stage == "runtime"
+  runtime_image_tag_valid  = can(regex("^git-[0-9a-f]{40}$", var.image_tag))
 
   azs = local.foundation_stage_enabled ? slice(data.aws_availability_zones.available[0].names, 0, var.availability_zone_count) : []
 

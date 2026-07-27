@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VENV = ROOT / ".venv"
 VENV_PYTHON = VENV / "bin" / "python"
+TERRAFORM = Path.home() / ".local" / "bin" / "terraform"
 
 
 def run(command: list[str], *, timeout: int) -> bool:
@@ -73,6 +74,18 @@ def main() -> int:
     if tools.returncode != 0:
         print("[fail] pinned CI tool installation failed")
         return 1
+    terraform = subprocess.run(
+        [str(TERRAFORM), "version"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if terraform.returncode != 0 or "Terraform v1.15.5" not in terraform.stdout:
+        print("[fail] Terraform 1.15.5 is not available after CI setup")
+        return 1
+    print("[ok] Terraform v1.15.5 is available in the user-local toolchain")
     print("[ok] CI setup completed without reading environment or credential values")
     return 0
 

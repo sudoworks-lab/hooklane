@@ -106,6 +106,7 @@ def validate_static_contract() -> None:
         'contains(["artifact", "foundation", "runtime"], var.deployment_stage)',
         'foundation_stage_enabled = contains(["foundation", "runtime"], var.deployment_stage)',
         'runtime_stage_enabled    = var.deployment_stage == "runtime"',
+        'runtime_image_tag_valid  = can(regex("^git-[0-9a-f]{40}$", var.image_tag))',
         'default     = 1',
         "valueFrom = aws_secretsmanager_secret.redis_url[0].arn",
         "secret_string = local.redis_url",
@@ -118,6 +119,8 @@ def validate_static_contract() -> None:
         'variable "deployment_stage"',
         "runtime_service_desired_count = local.runtime_stage_enabled ? var.desired_count : 0",
         "desired_count",
+        'var.deployment_stage != "runtime" || local.runtime_image_tag_valid',
+        '"192.0.2.1/32", "0.0.0.0/0", "::/0"',
     )
     for fragment in required_fragments:
         if fragment not in source and fragment not in (INFRA / "backend.hcl.example").read_text(
@@ -152,6 +155,11 @@ def validate_static_contract() -> None:
             fail(f"Terraform bootstrap is missing required contract: {marker}")
     if "bucket_key_enabled" in bootstrap_source:
         fail("Terraform bootstrap must not configure S3 Bucket Key with SSE-S3")
+    bootstrap_variables = (BOOTSTRAP / "variables.tf").read_text(encoding="utf-8")
+    bucket_variable = bootstrap_variables.split('variable "bucket_name" {', maxsplit=1)[1]
+    bucket_variable = bucket_variable.split("\n}", maxsplit=1)[0]
+    if "default" in bucket_variable:
+        fail("Terraform bootstrap bucket_name must be explicitly supplied before apply")
 
     ecs_source = (INFRA / "ecs.tf").read_text(encoding="utf-8")
     if ecs_source.count("local.runtime_service_desired_count") != 3:
@@ -176,6 +184,8 @@ def validate_static_contract() -> None:
     example_variables = (INFRA / "terraform.tfvars.example").read_text(encoding="utf-8")
     if 'deployment_stage       = "artifact"' not in example_variables:
         fail("Terraform example must start in the ECR-only artifact stage")
+    if 'image_tag              = "git-0000000000000000000000000000000000000000"' not in example_variables:
+        fail("Terraform example must use an immutable commit-tag placeholder")
 
     for filename in (
         "network.tf",
@@ -193,8 +203,11 @@ def validate_static_contract() -> None:
 
 def run_terraform_checks() -> None:
     terraform = shutil.which("terraform")
+    required = os.environ.get("HOOKLANE_TERRAFORM_REQUIRED") == "1" or os.environ.get("CI") == "true"
     if terraform is None:
-        print("[skip] terraform CLI is unavailable; static Terraform contract passed")
+        if required:
+            fail("Terraform CLI is required for CI verification but is unavailable")
+        print("[degraded] terraform CLI is unavailable; static Terraform contract passed")
         return
 
     fmt_result = subprocess.run(

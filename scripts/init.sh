@@ -47,6 +47,7 @@ show_tool Gitleaks gitleaks gitleaks version
 show_tool OSV-Scanner osv-scanner osv-scanner --version
 show_tool Trivy trivy trivy --version
 show_tool Kubeconform kubeconform kubeconform -v
+show_tool Terraform terraform terraform version
 
 PYTHON_CMD=""
 if command -v python >/dev/null 2>&1; then
