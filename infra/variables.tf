@@ -59,6 +59,18 @@ variable "alb_ingress_cidr_blocks" {
   description = "CIDR ranges allowed to reach the public ALB HTTP listener. The default is a non-routable plan-only sentinel."
   type        = list(string)
   default     = ["192.0.2.1/32"]
+
+  validation {
+    condition = var.deployment_stage != "runtime" ? true : (
+      length(var.alb_ingress_cidr_blocks) == 1 &&
+      can(regex("^[0-9]{1,3}(\\.[0-9]{1,3}){3}/32$", var.alb_ingress_cidr_blocks[0])) &&
+      can(cidrhost(var.alb_ingress_cidr_blocks[0], 0)) &&
+      var.alb_ingress_cidr_blocks[0] != "192.0.2.1/32" &&
+      var.alb_ingress_cidr_blocks[0] != "0.0.0.0/0" &&
+      var.alb_ingress_cidr_blocks[0] != "::/0"
+    )
+    error_message = "runtime ALB ingress requires exactly one Human-approved IPv4 /32 that is not the sentinel or unrestricted."
+  }
 }
 
 variable "enable_https" {

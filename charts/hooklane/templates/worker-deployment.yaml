@@ -56,6 +56,7 @@ spec:
                 name: {{ include "hooklane.fullname" . }}-config
           env:
             - name: HOOKLANE_REDIS_URL
+              {{- include "hooklane.validateRedisURL" . }}
               {{- if .Values.config.redisURLSecret.enabled }}
               {{- if or (eq .Values.config.redisURLSecret.name "") (eq .Values.config.redisURLSecret.key "") }}
               {{- fail "config.redisURLSecret.name and key are required when Secret injection is enabled" }}
@@ -66,7 +67,6 @@ spec:
                   key: {{ .Values.config.redisURLSecret.key }}
                   optional: false
               {{- else }}
-              {{- include "hooklane.validateRedisURL" . }}
               value: {{ .Values.config.redisURL | quote }}
               {{- end }}
             - name: HOOKLANE_CONSUMER_NAME

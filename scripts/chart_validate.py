@@ -119,7 +119,7 @@ def validate_redis_secret_boundary() -> None:
         "--kube-version",
         KUBE_VERSION,
         "--set-string",
-        f"config.redisURL=redis://:password{authority_marker}redis.example:6379/0",
+        "config.redisURL=redis://redis:6379/0",
         "--set",
         "config.redisURLSecret.enabled=true",
         "--set",
@@ -133,6 +133,133 @@ def validate_redis_secret_boundary() -> None:
         document = secret_render[start : len(secret_render) if end == -1 else end]
         if "value: redis://" in document or "password" in document:
             fail("Secret-enabled Deployment rendered a literal Redis URL")
+
+    empty_secret_render = run_helm(
+        "template",
+        "hooklane",
+        str(CHART),
+        "--namespace",
+        "hooklane",
+        "--kube-version",
+        KUBE_VERSION,
+        "--set-string",
+        "config.redisURL=",
+        "--set",
+        "config.redisURLSecret.enabled=true",
+        "--set",
+        "config.redisURLSecret.name=hooklane-runtime",
+        "--set",
+        "config.redisURLSecret.key=redis-url",
+    )
+    if "secretKeyRef:" not in empty_secret_render:
+        fail("empty Secret-mode Redis placeholder did not render a secret reference")
+
+    for value in (
+        f"redis://:password{authority_marker}redis.example:6379/0",
+        "redis://redis.example:6379/0?token=secret-like-value",
+    ):
+        rejected = subprocess.run(
+            [
+                "helm",
+                "template",
+                "hooklane",
+                str(CHART),
+                "--namespace",
+                "hooklane",
+                "--kube-version",
+                KUBE_VERSION,
+                "--set-string",
+                f"config.redisURL={value}",
+                "--set",
+                "config.redisURLSecret.enabled=true",
+                "--set",
+                "config.redisURLSecret.name=hooklane-runtime",
+                "--set",
+                "config.redisURLSecret.key=redis-url",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if rejected.returncode == 0:
+            fail("Secret-enabled Helm render accepted an unsafe Redis value")
+        if "secret-like-value" in f"{rejected.stdout}\n{rejected.stderr}":
+            fail("Helm reflected a credential-like Redis URL value")
+
+    missing_secret_key = subprocess.run(
+        [
+            "helm",
+            "template",
+            "hooklane",
+            str(CHART),
+            "--namespace",
+            "hooklane",
+            "--kube-version",
+            KUBE_VERSION,
+            "--set",
+            "config.redisURLSecret.enabled=true",
+            "--set",
+            "config.redisURLSecret.name=",
+            "--set",
+            "config.redisURLSecret.key=",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if missing_secret_key.returncode == 0:
+        fail("Secret-enabled Helm render accepted missing name/key")
+
+
+def validate_downstream_boundary() -> None:
+    valid_values = (
+        "http://hooklane-mock-sink:8080/internal/deliveries",
+        "https://controlled.example/hooks",
+    )
+    for value in valid_values:
+        run_helm(
+            "template",
+            "hooklane",
+            str(CHART),
+            "--namespace",
+            "hooklane",
+            "--kube-version",
+            KUBE_VERSION,
+            "--set-string",
+            f"config.downstreamURL={value}",
+        )
+
+    marker = "secret-like-value"
+    invalid_values = (
+        f"https://user:{marker}@controlled.example/hooks",
+        "https://controlled.example/hooks" + "?token=fixture",
+        "https://controlled.example/hooks#fragment",
+        "https://controlled.example/internal path",
+        "https://controlled.example:not-a-port/hooks",
+        "ftp://controlled.example/hooks",
+    )
+    for value in invalid_values:
+        rejected = subprocess.run(
+            [
+                "helm",
+                "template",
+                "hooklane",
+                str(CHART),
+                "--namespace",
+                "hooklane",
+                "--kube-version",
+                KUBE_VERSION,
+                "--set-string",
+                f"config.downstreamURL={value}",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if rejected.returncode == 0:
+            fail("Helm accepted an unsafe downstream URL")
+        if marker in f"{rejected.stdout}\n{rejected.stderr}":
+            fail("Helm reflected a credential-like downstream URL value")
 
 
 def validate_render_contract(rendered: str, label: str) -> dict[tuple[str, str], str]:
@@ -155,6 +282,7 @@ def validate_render_contract(rendered: str, label: str) -> dict[tuple[str, str],
 def main() -> int:
     validate_base()
     validate_redis_secret_boundary()
+    validate_downstream_boundary()
     rendered = run_helm(
         "template",
         "hooklane",

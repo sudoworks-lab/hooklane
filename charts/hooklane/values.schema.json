@@ -21,7 +21,7 @@
       "additionalProperties": false,
       "required": ["redisURL", "downstreamURL", "redisURLSecret"],
       "properties": {
-        "redisURL": {"type": "string", "minLength": 1},
+        "redisURL": {"type": "string"},
         "downstreamURL": {"type": "string", "minLength": 1},
         "redisURLSecret": {
           "type": "object",

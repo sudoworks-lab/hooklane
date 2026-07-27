@@ -133,5 +133,9 @@ def test_runtime_apply_guards_reject_ambiguous_image_and_ingress() -> None:
     assert 'var.deployment_stage != "runtime"' in ecs_source
     assert '"192.0.2.1/32", "0.0.0.0/0", "::/0"' in security_source
     assert 'var.deployment_stage != "runtime"' in security_source
-    assert 'image_tag              = "git-0000000000000000000000000000000000000000"' in example
+    assert 'var.image_tag != "git-0000000000000000000000000000000000000000"' in locals_source
+    assert 'image_tag              = "git-REPLACE_WITH_40_HEX_COMMIT"' in example
+    assert 'length(var.alb_ingress_cidr_blocks) == 1' in variables
+    assert '^[0-9]{1,3}(\\\\.[0-9]{1,3}){3}/32$' in variables
+    assert 'can(cidrhost(var.alb_ingress_cidr_blocks[0], 0))' in variables
     assert 'default     = "0.1.1"' in variables

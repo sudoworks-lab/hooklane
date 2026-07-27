@@ -106,7 +106,7 @@ def validate_static_contract() -> None:
         'contains(["artifact", "foundation", "runtime"], var.deployment_stage)',
         'foundation_stage_enabled = contains(["foundation", "runtime"], var.deployment_stage)',
         'runtime_stage_enabled    = var.deployment_stage == "runtime"',
-        'runtime_image_tag_valid  = can(regex("^git-[0-9a-f]{40}$", var.image_tag))',
+        'runtime_image_tag_valid  = can(regex("^git-[0-9a-f]{40}$", var.image_tag)) && var.image_tag != "git-0000000000000000000000000000000000000000"',
         'default     = 1',
         "valueFrom = aws_secretsmanager_secret.redis_url[0].arn",
         "secret_string = local.redis_url",
@@ -121,6 +121,9 @@ def validate_static_contract() -> None:
         "desired_count",
         'var.deployment_stage != "runtime" || local.runtime_image_tag_valid',
         '"192.0.2.1/32", "0.0.0.0/0", "::/0"',
+        'length(var.alb_ingress_cidr_blocks) == 1',
+        'can(regex("^[0-9]{1,3}(\\\\.[0-9]{1,3}){3}/32$", var.alb_ingress_cidr_blocks[0]))',
+        'can(cidrhost(var.alb_ingress_cidr_blocks[0], 0))',
     )
     for fragment in required_fragments:
         if fragment not in source and fragment not in (INFRA / "backend.hcl.example").read_text(
@@ -184,8 +187,8 @@ def validate_static_contract() -> None:
     example_variables = (INFRA / "terraform.tfvars.example").read_text(encoding="utf-8")
     if 'deployment_stage       = "artifact"' not in example_variables:
         fail("Terraform example must start in the ECR-only artifact stage")
-    if 'image_tag              = "git-0000000000000000000000000000000000000000"' not in example_variables:
-        fail("Terraform example must use an immutable commit-tag placeholder")
+    if 'image_tag              = "git-REPLACE_WITH_40_HEX_COMMIT"' not in example_variables:
+        fail("Terraform example must require replacement of the runtime image placeholder")
 
     for filename in (
         "network.tf",

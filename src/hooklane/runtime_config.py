@@ -69,7 +69,7 @@ def redis_config_from_environment(
 def parse_downstream_url(value: str) -> DownstreamTargetConfig:
     """Validate a controlled downstream endpoint without accepting credentials."""
 
-    if not value or value != value.strip():
+    if not value or any(character.isspace() for character in value):
         raise RuntimeConfigurationError("Downstream URL must be a non-empty URL")
     try:
         parsed = urlsplit(value)

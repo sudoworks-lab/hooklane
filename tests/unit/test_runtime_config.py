@@ -101,3 +101,20 @@ def test_downstream_credentials_are_rejected_without_reflection() -> None:
         parse_downstream_url(f"https://user:{marker}@controlled.example/hooks")
 
     assert marker not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "https://controlled.example/internal path",
+        "https://controlled.example/\tpath",
+        "https://controlled.example/hooks" + "?token=fixture",
+        "https://controlled.example/hooks#fragment",
+        "https://controlled.example:not-a-port/hooks",
+    ),
+)
+def test_downstream_rejects_any_whitespace_and_unsafe_url_parts(value: str) -> None:
+    with pytest.raises(RuntimeConfigurationError) as error:
+        parse_downstream_url(value)
+
+    assert value not in str(error.value)
