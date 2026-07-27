@@ -80,14 +80,20 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - 2026-07-27 JSTにG2.9のworker liveness修正を含むfoundationを再作成した。保存済みexact planは`create=49`、`update=0`、`delete=0`であり、apply wrapperのreceiptは保存されなかったが、Terraform processの完了後にactual backendをrefreshしたconvergence planが`create=0`、`update=0`、`delete=0`となることを確認した。実AWSでVPC、ALB、Valkey、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、CloudWatch Logs 3 group、Secrets Manager secret、Cloud Map、IAM、ECS service 3件を確認した
 - 再作成したworker task definitionは`CMD-SHELL`のlocalhost metrics probeを使い、`interval=30`、`timeout=5`、`retries=3`、`startPeriod=30`である。API／worker／mock sinkは全て`desired/running/pending = 0/0/0`で、running/stopped Fargate taskは0件だった。ALB ingressは引き続き`192.0.2.1/32` sentinelだけであり、runtime applyは実行していない
 - foundation stateから生成したruntime read-only planは`create=0`、`update=3`、`delete=0`で、API／worker／mock sinkのECS desired countだけを`0`から`1`へ変更する。task definition、image tag、ECR、network、ALB、Valkey、IAM、secretの置換またはmutationは含まれない。runtime applyにはHuman承認済みIPv4 `/32`が別途必要である
+- 2026-07-27 JSTに、Human承認済みの単一IPv4 `/32`を使う修正後の`runtime` stageを実行した。保存済みexact planは`create=0`、`update=4`、`delete=0`で、API／worker／mock sinkのdesired countを`0`から`1`へ変更し、ALB ingressをsentinelから承認済みCIDRへ置換するものだった。apply後40秒で3 serviceは全て`desired/running/pending = 1/1/0`、worker container healthはhealthy、API targetはhealthyとなった。既存のcommit固定ECR imageを再利用し、新しいimage buildまたはpushは行っていない
+- 同runtimeではALB経由のdummy eventが`202 Accepted`後にattempt 1で`delivered`となること、同一idempotency keyと同一requestが同じevent IDを返すこと、同一keyと異なるrequestが`409 Conflict`となることを確認した。event payload、idempotency keyの生値、credential、Redis URLはevidenceへ保存していない
+- controlled mock sinkを既存の`server_error` modeへ一時的に切り替え、HTTP 503に対するretry schedule、attempt増加、attempt 5での`dead_letter`を確認した。正常modeへ戻した後の新規eventはattempt 1で`delivered`となった。一方、同一retry eventが途中でsuccessへ遷移する経路はこの実行では確認していない
+- worker serviceのforce-new-deploymentでSIGTERMを伴うreplacementを確認し、CloudWatch Logsで`worker_stopped`とreplacement後の`worker_started`を確認した。in-flight messageを停止中にclaimして終端状態へ進めるpending recoveryは、このAWS runtimeでは未実証である
+- APIだけへ存在しないimage tagのtemporary task definitionを適用するrollback drillを実行した。deployment circuit breakerはimage pull failureを検出し、既存healthy targetは維持された。ただしECSが旧revisionへ自動復帰し切らなかったため、approved revisionへの安全な手動復帰を行った。automatic rollbackの成功は実証済みとは扱わない
+- runtime検証後、artifact stageへのexact cleanup plan（`create=0`、`update=0`、`delete=49`）をapplyし、483.391秒で完了した。post-cleanup artifact convergence planは`create=0`、`update=0`、`delete=0`である。read-only確認ではALB、Valkey、Hooklane VPC endpoint、VPC、CloudWatch Logs、Secrets Manager secret、IAM role、Cloud Map、active ECS cluster、ECS service、running/pending task、active task definitionは0件であり、ECR repository 3件、lifecycle policy 3件、approved image 3件、remote state S3 bucketは保持されている。ECS `describe-clusters`には課金・service・taskを伴わない`INACTIVE` tombstoneが1件残る
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
-- AWS runtimeのnormal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drill、approved ALB ingressからの外部到達
-- 修正後のAWS runtimeにおけるworker／Valkey接続の安定性、normal delivery、idempotency、retry、dead-letter、pending recovery、graceful shutdown、deployment rollback drill、ECR Basic scanのseverity結果
+- AWS runtimeでの同一retry eventのeventual success、pending recovery、in-flight workのgraceful shutdown、deployment circuit breakerによるautomatic rollback
+- 修正後のAWS runtimeにおけるworker／Valkey接続のlong-running stability、ECR Basic scanのseverity結果
 
 ## 配布範囲
 
