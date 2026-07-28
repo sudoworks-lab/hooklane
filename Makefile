@@ -1,9 +1,10 @@
 PYTHON ?= $(shell command -v python 2>/dev/null || command -v python3 2>/dev/null)
 TEST_PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(PYTHON))
-IMAGE_VERSION := 0.1.1
-API_IMAGE := hooklane-api:$(IMAGE_VERSION)
-WORKER_IMAGE := hooklane-worker:$(IMAGE_VERSION)
-MOCK_SINK_IMAGE := hooklane-mock-sink:$(IMAGE_VERSION)
+IMAGE_TAG ?= 0.1.1
+export IMAGE_TAG
+API_IMAGE := hooklane-api:$(IMAGE_TAG)
+WORKER_IMAGE := hooklane-worker:$(IMAGE_TAG)
+MOCK_SINK_IMAGE := hooklane-mock-sink:$(IMAGE_TAG)
 PROMETHEUS_IMAGE := prom/prometheus@sha256:f39df5334dee301b885f77e0ff1159f5d8a43bf9db518f885544594799a1e3c2
 GRAFANA_IMAGE := grafana/grafana@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
 TARGET ?= image
@@ -101,11 +102,11 @@ security-filesystem:
 
 security-image: images-build
 	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no security interpreter was found"; exit 1; }
-	@$(TEST_PYTHON) scripts/security_gate.py image
+	@$(TEST_PYTHON) scripts/security_gate.py image --image-tag "$(IMAGE_TAG)"
 
 security: images-build
 	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no security interpreter was found"; exit 1; }
-	@$(TEST_PYTHON) scripts/security_gate.py all
+	@$(TEST_PYTHON) scripts/security_gate.py all --image-tag "$(IMAGE_TAG)"
 
 terraform-validate:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
@@ -123,17 +124,19 @@ ci-contract:
 	@$(TEST_PYTHON) scripts/ci_contract.py
 
 images-build:
-	@docker build --target api --tag $(API_IMAGE) .
-	@docker build --target worker --tag $(WORKER_IMAGE) .
-	@docker build --target mock-sink --tag $(MOCK_SINK_IMAGE) .
+	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
+	@$(PYTHON) scripts/image_tag.py --image-tag "$(IMAGE_TAG)"
+	@docker build --target api --tag "$(API_IMAGE)" .
+	@docker build --target worker --tag "$(WORKER_IMAGE)" .
+	@docker build --target mock-sink --tag "$(MOCK_SINK_IMAGE)" .
 
 image-contract:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
-	@$(PYTHON) scripts/image_contract.py
+	@$(PYTHON) scripts/image_contract.py --image-tag "$(IMAGE_TAG)"
 
 container-policy-check:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
-	@$(PYTHON) scripts/container_policy_check.py --target $(TARGET)
+	@$(PYTHON) scripts/container_policy_check.py --target $(TARGET) --image-tag "$(IMAGE_TAG)"
 
 env-example-check:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }

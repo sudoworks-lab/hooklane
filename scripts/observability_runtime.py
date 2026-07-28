@@ -104,7 +104,8 @@ def port_forward(service: str, local_port: int, remote_port: int) -> Iterator[No
 
 def helm_observability_upgrade() -> None:
     kind_runtime.require_cluster()
-    kind_runtime.load_images()
+    image_tag = kind_runtime.resolve_image_tag()
+    kind_runtime.load_images(image_tag)
     kind_runtime.helm(
         "upgrade",
         "--install",
@@ -120,6 +121,7 @@ def helm_observability_upgrade() -> None:
         "240s",
         "--history-max",
         "3",
+        *kind_runtime.image_overrides(image_tag),
     )
     for workload in (
         "deployment/hooklane-api",

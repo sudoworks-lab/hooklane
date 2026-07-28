@@ -40,8 +40,19 @@ jobs:
           make ci-setup
           terraform version
           printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate immutable PR image tag
+        run: |
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "[fail] GITHUB_SHA must be 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          IMAGE_TAG="git-$GITHUB_SHA"
+          printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> "$GITHUB_ENV"
       - name: Run local quality, security, and chart gates
-        run: make verify
+        run: |
+          make images-build IMAGE_TAG="$IMAGE_TAG"
+          make image-contract IMAGE_TAG="$IMAGE_TAG"
+          make verify IMAGE_TAG="$IMAGE_TAG"
 
   e2e-kind:
     name: kind delivery and recovery E2E
@@ -63,8 +74,16 @@ jobs:
         run: |
           make ci-setup
           printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate immutable PR image tag
+        run: |
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "[fail] GITHUB_SHA must be 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          IMAGE_TAG="git-$GITHUB_SHA"
+          printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> "$GITHUB_ENV"
       - name: Run local kind E2E
-        run: make e2e-kind
+        run: make e2e-kind IMAGE_TAG="$IMAGE_TAG"
       - name: Upload sanitized failure diagnostics
         if: failure()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

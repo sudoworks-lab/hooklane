@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 from typing import Final, Never
 
 
-IMAGE: Final = "hooklane-worker:0.1.1"
+IMAGE: str = ""
+DEFAULT_IMAGE_TAG = "0.1.1"
+IMAGE_TAG_PATTERN = re.compile(r"(?:0\.1\.1|git-[0-9a-f]{40})\Z")
 REDIS_IMAGE: Final = (
     "redis:8.0.1-alpine@sha256:"
     "62b5498c91778f738f0efbf0a6fd5b434011235a3e7b5f2ed4a2c0c63bb1c786"
@@ -24,6 +27,22 @@ WORKER_LIVENESS_COMMAND: Final = (
 
 def fail(message: str) -> Never:
     raise RuntimeError(message)
+
+
+def resolve_image_tag() -> str:
+    candidate = os.environ.get("IMAGE_TAG", DEFAULT_IMAGE_TAG)
+    if not IMAGE_TAG_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "IMAGE_TAG must be exactly 0.1.1 or git-<40 lowercase hexadecimal characters>"
+        )
+    return candidate
+
+
+def application_images(image_tag: str) -> tuple[str, ...]:
+    return tuple(
+        f"{name}:{image_tag}"
+        for name in ("hooklane-api", "hooklane-worker", "hooklane-mock-sink")
+    )
 
 
 def docker(arguments: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -158,6 +177,8 @@ def cleanup(containers: list[str], network_name: str, network_created: bool) -> 
 
 
 def main() -> int:
+    global IMAGE
+    IMAGE = application_images(resolve_image_tag())[1]
     nonce = f"hooklane-worker-health-{os.getpid()}"
     network_name = f"{nonce}-network"
     redis_name = f"{nonce}-redis"

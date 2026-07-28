@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -13,6 +15,13 @@ from typing import cast
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_IMAGE_TAG = "0.1.1"
+IMAGE_TAG_PATTERN = re.compile(r"(?:0\.1\.1|git-[0-9a-f]{40})\Z")
+APPLICATION_IMAGE_NAMES = (
+    "hooklane-api",
+    "hooklane-worker",
+    "hooklane-mock-sink",
+)
 POLICY_PATH = ROOT / "security-policy.json"
 TOOL_VERSIONS = {
     "gitleaks": "8.30.1",
@@ -24,11 +33,6 @@ VERSION_ARGUMENTS = {
     "osv-scanner": ["--version"],
     "trivy": ["--version"],
 }
-IMAGES = (
-    "hooklane-api:0.1.1",
-    "hooklane-worker:0.1.1",
-    "hooklane-mock-sink:0.1.1",
-)
 
 
 class SecurityGateError(RuntimeError):
@@ -37,6 +41,20 @@ class SecurityGateError(RuntimeError):
 
 class SecurityFinding(SecurityGateError):
     """A scanner returned a policy-relevant finding."""
+
+
+def resolve_image_tag(value: str | None = None) -> str:
+    candidate = os.environ.get("IMAGE_TAG", DEFAULT_IMAGE_TAG) if value is None else value
+    if not IMAGE_TAG_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "IMAGE_TAG must be exactly 0.1.1 or git-<40 lowercase hexadecimal characters>"
+        )
+    return candidate
+
+
+def application_images(image_tag: str) -> tuple[str, ...]:
+    tag = resolve_image_tag(image_tag)
+    return tuple(f"{name}:{tag}" for name in APPLICATION_IMAGE_NAMES)
 
 
 @dataclass(frozen=True)
@@ -99,7 +117,7 @@ def validate_policy() -> None:
         raise SecurityGateError("Trivy must keep secret scanning separate")
     if trivy.get("fail_severities") != ["HIGH", "CRITICAL"]:
         raise SecurityGateError("Trivy must fail on High and Critical findings")
-    if trivy.get("images") != list(IMAGES):
+    if trivy.get("images") != list(APPLICATION_IMAGE_NAMES):
         raise SecurityGateError("Trivy image set does not match project images")
 
 
@@ -280,10 +298,19 @@ def scan_filesystem() -> None:
     evaluate_trivy(result, label="Trivy filesystem", required_target="requirements.lock")
 
 
-def scan_images() -> None:
+def require_local_images(images: tuple[str, ...]) -> None:
+    for role, image in zip(APPLICATION_IMAGE_NAMES, images, strict=True):
+        result = run(["docker", "image", "inspect", image], timeout=30)
+        if result.returncode != 0:
+            raise SecurityGateError(f"{role} image is not available locally")
+
+
+def scan_images(image_tag: str) -> None:
     require_tool("trivy")
+    images = application_images(image_tag)
+    require_local_images(images)
     failed = False
-    for image in IMAGES:
+    for image in images:
         result = run(
             ["trivy", "image", *trivy_common(), "--image-src", "docker", image],
             timeout=330,
@@ -312,18 +339,24 @@ def parse_args() -> argparse.Namespace:
         "mode",
         choices=("secret", "dependency", "filesystem", "image", "all"),
     )
+    parser.add_argument("--image-tag", default=None)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    try:
+        image_tag = resolve_image_tag(args.image_tag)
+    except ValueError as error:
+        print(f"[fail] security gate: {error}")
+        return 1
     if not execute("policy", validate_policy):
         return 1
     actions = {
         "secret": scan_secret,
         "dependency": scan_dependency,
         "filesystem": scan_filesystem,
-        "image": scan_images,
+        "image": lambda: scan_images(image_tag),
     }
     selected = tuple(actions) if args.mode == "all" else (args.mode,)
     passed = True

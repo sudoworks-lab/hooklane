@@ -8,7 +8,16 @@ import time
 from typing import Any, Never, cast
 
 from chart_smoke import request_json, wait_ready
-from kind_runtime import CHART, CONTEXT_NAME, KUBECONFIG, NAMESPACE, RELEASE, require_cluster
+from kind_runtime import (
+    CHART,
+    CONTEXT_NAME,
+    KUBECONFIG,
+    NAMESPACE,
+    RELEASE,
+    application_images,
+    require_cluster,
+    resolve_image_tag,
+)
 
 
 API_REPLICAS = 2
@@ -172,7 +181,7 @@ def create_unready_api_pod() -> str:
             "containers": [
                 {
                     "name": "api",
-                    "image": "hooklane-api:0.1.1",
+                    "image": application_images(resolve_image_tag())[0],
                     "imagePullPolicy": "IfNotPresent",
                     "envFrom": [{"configMapRef": {"name": "hooklane-config"}}],
                     "ports": [{"name": "http", "containerPort": 8080}],

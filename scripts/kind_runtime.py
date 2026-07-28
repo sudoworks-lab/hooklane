@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Never
@@ -17,15 +19,26 @@ NAMESPACE = "hooklane"
 RELEASE = "hooklane"
 KIND_CONFIG = ROOT / "deploy" / "kind" / "cluster.yaml"
 CHART = ROOT / "charts" / "hooklane"
-APPLICATION_IMAGES = (
-    "hooklane-api:0.1.1",
-    "hooklane-worker:0.1.1",
-    "hooklane-mock-sink:0.1.1",
-)
+DEFAULT_IMAGE_TAG = "0.1.1"
+IMAGE_TAG_PATTERN = re.compile(r"(?:0\.1\.1|git-[0-9a-f]{40})\Z")
 
 
 def fail(message: str) -> Never:
     raise RuntimeError(message)
+
+
+def resolve_image_tag(value: str | None = None) -> str:
+    candidate = os.environ.get("IMAGE_TAG", DEFAULT_IMAGE_TAG) if value is None else value
+    if not IMAGE_TAG_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "IMAGE_TAG must be exactly 0.1.1 or git-<40 lowercase hexadecimal characters>"
+        )
+    return candidate
+
+
+def application_images(image_tag: str) -> tuple[str, ...]:
+    tag = resolve_image_tag(image_tag)
+    return tuple(f"{name}:{tag}" for name in ("hooklane-api", "hooklane-worker", "hooklane-mock-sink"))
 
 
 def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -126,16 +139,26 @@ def cluster_up() -> None:
     print(f"[ok] project cluster {CLUSTER_NAME} is Ready")
 
 
-def load_images() -> None:
+def load_images(image_tag: str | None = None) -> None:
+    resolved_tag = resolve_image_tag(image_tag)
     require_cluster()
-    for image in APPLICATION_IMAGES:
+    for image in application_images(resolved_tag):
         run(["kind", "load", "docker-image", image, "--name", CLUSTER_NAME])
-    print("[ok] fixed Hooklane images loaded into kind")
+    print("[ok] commit-tagged Hooklane images loaded into kind")
+
+
+def image_overrides(image_tag: str) -> tuple[str, ...]:
+    return tuple(
+        value
+        for name in ("api", "worker", "mockSink")
+        for value in ("--set-string", f"{name}.image.tag={image_tag}")
+    )
 
 
 def deploy() -> None:
     require_cluster()
-    load_images()
+    image_tag = resolve_image_tag()
+    load_images(image_tag)
     helm(
         "upgrade",
         "--install",
@@ -149,6 +172,7 @@ def deploy() -> None:
         "180s",
         "--history-max",
         "3",
+        *image_overrides(image_tag),
     )
     kubectl("--namespace", NAMESPACE, "rollout", "status", "deployment/hooklane-api", "--timeout=180s")
     kubectl("--namespace", NAMESPACE, "rollout", "status", "deployment/hooklane-worker", "--timeout=180s")

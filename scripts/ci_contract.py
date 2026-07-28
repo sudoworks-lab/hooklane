@@ -103,7 +103,15 @@ def validate_quality_job(workflow: dict[str, object]) -> None:
     if len(action_references) != 2:
         raise ContractError("baseline workflow must use checkout and setup-python only")
     combined_commands = "\n".join(run_commands)
-    for required in ("make ci-setup", "terraform version", "make verify"):
+    for required in (
+        "make ci-setup",
+        "terraform version",
+        'make images-build IMAGE_TAG="$IMAGE_TAG"',
+        'make image-contract IMAGE_TAG="$IMAGE_TAG"',
+        'make verify IMAGE_TAG="$IMAGE_TAG"',
+        '[[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'IMAGE_TAG="git-$GITHUB_SHA"',
+    ):
         if required not in combined_commands:
             raise ContractError(f"workflow does not call local target: {required}")
 
@@ -149,7 +157,13 @@ def validate_e2e_job(workflow: dict[str, object]) -> None:
     if len(action_references) != 3:
         raise ContractError("kind E2E must use checkout, setup-python, and upload-artifact")
     combined_commands = "\n".join(run_commands)
-    for required in ("make ci-setup", "make e2e-kind", "make cluster-down"):
+    for required in (
+        "make ci-setup",
+        'make e2e-kind IMAGE_TAG="$IMAGE_TAG"',
+        "make cluster-down",
+        '[[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'IMAGE_TAG="git-$GITHUB_SHA"',
+    ):
         if required not in combined_commands:
             raise ContractError(f"kind E2E job does not call local target: {required}")
     if artifact_step is None or artifact_step.get("if") != "failure()":
@@ -169,6 +183,7 @@ def validate_prohibited_content(text: str) -> None:
         "docker push",
         "helm install",
         ":latest",
+        "0.1.1",
     )
     for marker in prohibited:
         if marker in text:
