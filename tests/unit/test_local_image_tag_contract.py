@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE_TAG_SCRIPT = ROOT / "scripts" / "image_tag.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
-GIT_IMAGE_TAG = "git-a7b55d7c41f5f818c1702adddfdb62f42564b37c"
+GIT_IMAGE_TAG = "git-ebe9577d7bc29fe10c431a821f524e3ba9c40d88"
 
 
 def run_image_tag(*arguments: str, image_tag: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -88,9 +88,16 @@ def test_build_scan_contract_and_verify_use_one_explicit_tag() -> None:
 
 def test_ci_uses_commit_tag_and_does_not_fallback_to_release_tag() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert 'IMAGE_TAG="git-$GITHUB_SHA"' in workflow
-    assert '[[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]' in workflow
+    assert workflow.count("Determine immutable source image identity") == 2
+    assert 'PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}' in workflow
+    assert 'if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then' in workflow
+    assert 'SOURCE_SHA="$PR_HEAD_SHA"' in workflow
+    assert 'SOURCE_SHA="$GITHUB_SHA"' in workflow
+    assert '[[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]' in workflow
+    assert 'IMAGE_TAG="git-$SOURCE_SHA"' in workflow
+    assert 'IMAGE_TAG="git-$GITHUB_SHA"' not in workflow
     assert 'make images-build IMAGE_TAG="$IMAGE_TAG"' in workflow
+    assert "make observability-images" in workflow
     assert 'make image-contract IMAGE_TAG="$IMAGE_TAG"' in workflow
     assert 'make verify IMAGE_TAG="$IMAGE_TAG"' in workflow
     assert "make e2e-kind IMAGE_TAG=\"$IMAGE_TAG\"" in workflow

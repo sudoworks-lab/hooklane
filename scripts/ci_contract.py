@@ -107,13 +107,36 @@ def validate_quality_job(workflow: dict[str, object]) -> None:
         "make ci-setup",
         "terraform version",
         'make images-build IMAGE_TAG="$IMAGE_TAG"',
+        "make observability-images",
         'make image-contract IMAGE_TAG="$IMAGE_TAG"',
         'make verify IMAGE_TAG="$IMAGE_TAG"',
-        '[[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
-        'IMAGE_TAG="git-$GITHUB_SHA"',
     ):
         if required not in combined_commands:
             raise ContractError(f"workflow does not call local target: {required}")
+    identity_steps = [
+        object_dict(raw_step, "quality step")
+        for raw_step in steps
+        if object_dict(raw_step, "quality step").get("name")
+        == "Determine immutable source image identity"
+    ]
+    if len(identity_steps) != 1:
+        raise ContractError("quality job must determine image identity in one named step")
+    identity = identity_steps[0]
+    identity_environment = object_dict(identity.get("env"), "quality image identity environment")
+    if identity_environment.get("PR_HEAD_SHA") != "${{ github.event.pull_request.head.sha }}":
+        raise ContractError("quality image identity must read the pull request head SHA")
+    identity_run = identity.get("run")
+    if not isinstance(identity_run, str):
+        raise ContractError("quality image identity step must run a shell contract")
+    for required in (
+        'if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then',
+        'SOURCE_SHA="$PR_HEAD_SHA"',
+        'SOURCE_SHA="$GITHUB_SHA"',
+        '[[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'IMAGE_TAG="git-$SOURCE_SHA"',
+    ):
+        if required not in identity_run:
+            raise ContractError(f"quality image identity is missing: {required}")
 
 
 def validate_e2e_job(workflow: dict[str, object]) -> None:
@@ -161,11 +184,33 @@ def validate_e2e_job(workflow: dict[str, object]) -> None:
         "make ci-setup",
         'make e2e-kind IMAGE_TAG="$IMAGE_TAG"',
         "make cluster-down",
-        '[[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
-        'IMAGE_TAG="git-$GITHUB_SHA"',
     ):
         if required not in combined_commands:
             raise ContractError(f"kind E2E job does not call local target: {required}")
+    identity_steps = [
+        object_dict(raw_step, "kind E2E step")
+        for raw_step in steps
+        if object_dict(raw_step, "kind E2E step").get("name")
+        == "Determine immutable source image identity"
+    ]
+    if len(identity_steps) != 1:
+        raise ContractError("kind E2E must determine image identity in one named step")
+    identity = identity_steps[0]
+    identity_environment = object_dict(identity.get("env"), "kind E2E image identity environment")
+    if identity_environment.get("PR_HEAD_SHA") != "${{ github.event.pull_request.head.sha }}":
+        raise ContractError("kind E2E image identity must read the pull request head SHA")
+    identity_run = identity.get("run")
+    if not isinstance(identity_run, str):
+        raise ContractError("kind E2E image identity step must run a shell contract")
+    for required in (
+        'if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then',
+        'SOURCE_SHA="$PR_HEAD_SHA"',
+        'SOURCE_SHA="$GITHUB_SHA"',
+        '[[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'IMAGE_TAG="git-$SOURCE_SHA"',
+    ):
+        if required not in identity_run:
+            raise ContractError(f"kind E2E image identity is missing: {required}")
     if artifact_step is None or artifact_step.get("if") != "failure()":
         raise ContractError("diagnostics must upload only after failure")
     artifact_options = object_dict(artifact_step.get("with"), "artifact options")

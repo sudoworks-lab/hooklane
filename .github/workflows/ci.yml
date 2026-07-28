@@ -40,17 +40,25 @@ jobs:
           make ci-setup
           terraform version
           printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Validate immutable PR image tag
+      - name: Determine immutable source image identity
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "[fail] GITHUB_SHA must be 40 lowercase hexadecimal characters"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            SOURCE_SHA="$PR_HEAD_SHA"
+          else
+            SOURCE_SHA="$GITHUB_SHA"
+          fi
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "[fail] source commit SHA must be 40 lowercase hexadecimal characters"
             exit 1
           fi
-          IMAGE_TAG="git-$GITHUB_SHA"
+          IMAGE_TAG="git-$SOURCE_SHA"
           printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> "$GITHUB_ENV"
       - name: Run local quality, security, and chart gates
         run: |
           make images-build IMAGE_TAG="$IMAGE_TAG"
+          make observability-images
           make image-contract IMAGE_TAG="$IMAGE_TAG"
           make verify IMAGE_TAG="$IMAGE_TAG"
 
@@ -74,13 +82,20 @@ jobs:
         run: |
           make ci-setup
           printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Validate immutable PR image tag
+      - name: Determine immutable source image identity
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "[fail] GITHUB_SHA must be 40 lowercase hexadecimal characters"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            SOURCE_SHA="$PR_HEAD_SHA"
+          else
+            SOURCE_SHA="$GITHUB_SHA"
+          fi
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "[fail] source commit SHA must be 40 lowercase hexadecimal characters"
             exit 1
           fi
-          IMAGE_TAG="git-$GITHUB_SHA"
+          IMAGE_TAG="git-$SOURCE_SHA"
           printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" >> "$GITHUB_ENV"
       - name: Run local kind E2E
         run: make e2e-kind IMAGE_TAG="$IMAGE_TAG"
