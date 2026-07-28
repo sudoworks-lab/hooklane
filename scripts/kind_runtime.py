@@ -155,10 +155,10 @@ def image_overrides(image_tag: str) -> tuple[str, ...]:
     )
 
 
-def deploy() -> None:
+def deploy(image_tag: str | None = None) -> None:
+    resolved_tag = resolve_image_tag(image_tag)
     require_cluster()
-    image_tag = resolve_image_tag()
-    load_images(image_tag)
+    load_images(resolved_tag)
     helm(
         "upgrade",
         "--install",
@@ -172,7 +172,7 @@ def deploy() -> None:
         "180s",
         "--history-max",
         "3",
-        *image_overrides(image_tag),
+        *image_overrides(resolved_tag),
     )
     kubectl("--namespace", NAMESPACE, "rollout", "status", "deployment/hooklane-api", "--timeout=180s")
     kubectl("--namespace", NAMESPACE, "rollout", "status", "deployment/hooklane-worker", "--timeout=180s")
