@@ -44,7 +44,7 @@
 
 ## AWS evidence scope
 
-sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、記録済みevidenceを現在HEADのAWS実証とは扱わない。
+source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。receipt SHA-256は`a1aa6f342f6b052525feba59afc6bef961b11b58b82804a37f6e34c3d305922e`、diagnostic SHA-256は`27b8d08b4c13af84090b7927d2d86a8fc6acce243e6bf7e4153827aadedaa4bd`である。
 
 ## GitHub Actions
 
@@ -69,35 +69,22 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 ## 実証済みの事実
 
 - localのquality、security、documentation、Helm、Compose、kind、rollout、observability、incident contractはpass
-- 修正後AWS runtimeのsanitized machine-readable evidenceは[`docs/aws/runtime-evidence.json`](aws/runtime-evidence.json)に保存し、SHA-256は`a3d81f8e186a8be7386fe5fe091e1285c971fb41107fa9fe00881b90a61ff8ff`である。account metadata、ARN、credential、Redis URL、payload、Idempotency-Key生値は含めない
+- source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`に対するAWS revalidationのsanitized machine-readable evidenceは[`docs/aws/runtime-evidence.json`](aws/runtime-evidence.json)に保存する。main/recovery artifactのSHA-256 provenanceとcanonical evidence/manifestのSHA-256を同JSONに記録し、account ID、ARN、credential、token、endpoint、registry hostname、payload、Idempotency-Key生値、個人情報は含めない
 - 配送はat-least-onceであり、downstreamへのattemptが重複し得る
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
-- `platform/aws-interview-v1`ではTerraform 1.15.5、AWS provider lock、bootstrap plan、ECS serviceを0 taskに保つfoundation plan、各serviceを1 taskにするruntime planをread-onlyで確認した。remote state bootstrap S3 bucket、artifact stage、ECS serviceを0 taskに保つfoundation stageは明示承認の下で作成・security contractを検証済みである
-- 同branchの`artifact` stageはread-only planで`create=6`、`update=0`、`delete=0`を確認後、同じexact planをapplyした。対象はAPI、worker、mock sinkのECR repository各1件とlifecycle policy各1件だけであり、tag immutability、AES256 encryption、scan-on-push、repository policyなし、最新10 imageのlifecycle policyをread-onlyで確認した
-- 承認済みcommit固定tagのAPI、worker、mock sink imageをprivate ECRへpushし、digestとsizeをGit管理外evidenceへ保存した。local Trivy image policyのHIGH／CRITICAL findingは3 imageとも0件である。approved tagだけにmanual ECR Basic Scanを要求したが、3 imageとも`UNSUPPORTED`でseverity countは未確定である
-- 同じcommit固定tagで生成した`foundation` stageのread-only planは`create=49`、`update=0`、`delete=0`で、既存ECR 6 resourceのmutationは0、API／worker／mock sinkのECS desired countは全て0である。明示承認の下でapplyし、途中でCloud Map A recordに不要なECS container name/portを指定したためmock sink serviceだけが`InvalidParameter`で失敗した。A record contractに合わせてその指定を削除し、最終的なfoundation convergence planが`create=0`、`update=0`、`delete=0`となることを確認した
-- foundationの実AWS構成はVPC、public/private subnet各2、NAT Gatewayなし、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、ALB、Valkey 7.2系 single node、CloudWatch Logs 3 group、Secrets Manager secret、IAM、Cloud Map、ECS service 3件を含む。ALB ingressは`192.0.2.1/32` sentinelだけで、ECS serviceは全て`desired/running/pending = 0/0/0`、running/stopped Fargate taskは0件である
-- 2026-07-27 JSTに、Human承認済みの単一IPv4 `/32`だけをALB ingressへ設定した`runtime` stageを実行した。最初のexact planは`create=0`、`update=4`、`delete=0`で、API、worker、mock sinkのdesired countを0から1へ変え、ALB ingress sentinelを置換するものだった。同じartifactのapply後、ALB security groupにAPI targetへのegressがないことを確認し、API security groupのTCP/8080だけへ限定したegress ruleを追加する`create=0`、`update=1`、`delete=0`のexact planをapplyした
-- 初回runtimeでは修正前のECS startup health contractがworker replacementを引き起こした。ローカルDocker再現で、Redis接続不能時にもworker processと`9090` metrics surfaceは生存する一方、旧health commandだけがnon-zeroになることを確認し、worker livenessをlocal metrics probeへ修正した。この初回failureは後続の修正後runtimeで解消を確認した。
-- cost controlのためECS service 3件を`desired_count = 0`へ戻す`create=0`、`update=3`、`delete=0`のexact planをapplyした。その後artifact stageへのcleanup plan（`create=0`、`update=0`、`delete=49`）をapplyし、ALB、Valkey、VPC endpoint、VPC、ECS、Cloud Map、IAM、Secrets Manager、CloudWatch Logsを削除した。post-cleanupのactual backend artifact planは`create=0`、`update=0`、`delete=0`である。remote state bootstrap S3 bucket、ECR repository 3件、lifecycle policy 3件、approved image 3件は保持されている
-- 2026-07-27 JSTにG2.9のworker liveness修正を含むfoundationを再作成した。保存済みexact planは`create=49`、`update=0`、`delete=0`であり、apply wrapperのreceiptは保存されなかったが、Terraform processの完了後にactual backendをrefreshしたconvergence planが`create=0`、`update=0`、`delete=0`となることを確認した。実AWSでVPC、ALB、Valkey、private DNS有効なinterface VPC endpoint 5件（ENI 10件）、S3 gateway endpoint、CloudWatch Logs 3 group、Secrets Manager secret、Cloud Map、IAM、ECS service 3件を確認した
-- 修正後worker task definitionは`CMD-SHELL`のlocalhost metrics probeを使い、`interval=30`、`timeout=5`、`retries=3`、`startPeriod=30`である。foundationではAPI／worker／mock sinkを全て`desired/running/pending = 0/0/0`に保ち、runtime planはtask definition、image tag、ECR、network、ALB、Valkey、IAM、secretの置換を含まないことを確認した。
-- 2026-07-27 JSTに、Human承認済みの単一IPv4 `/32`を使う修正後の`runtime` stageを実行した。保存済みexact planは`create=0`、`update=4`、`delete=0`で、API／worker／mock sinkのdesired countを`0`から`1`へ変更し、ALB ingressをsentinelから承認済みCIDRへ置換するものだった。apply後40秒で3 serviceは全て`desired/running/pending = 1/1/0`、worker container healthはhealthy、API targetはhealthyとなった。既存のcommit固定ECR imageを再利用し、新しいimage buildまたはpushは行っていない
-- 同runtimeではALB経由のdummy eventが`202 Accepted`後にattempt 1で`delivered`となること、同一idempotency keyと同一requestが同じevent IDを返すこと、同一keyと異なるrequestが`409 Conflict`となることを確認した。event payload、idempotency keyの生値、credential、Redis URLはevidenceへ保存していない
-- controlled mock sinkを既存の`server_error` modeへ一時的に切り替え、HTTP 503に対するretry schedule、attempt増加、attempt 5での`dead_letter`を確認した。正常modeへ戻した後の新規eventはattempt 1で`delivered`となった。一方、同一retry eventが途中でsuccessへ遷移する経路はこの実行では確認していない
-- worker serviceのforce-new-deploymentでSIGTERMを伴うreplacementを確認し、CloudWatch Logsで`worker_stopped`とreplacement後の`worker_started`を確認した。in-flight messageを停止中にclaimして終端状態へ進めるpending recoveryは、このAWS runtimeでは未実証である
-- APIだけへ存在しないimage tagのtemporary task definitionを適用するrollback drillを実行した。deployment circuit breakerはimage pull failureを検出し、既存healthy targetは維持された。ただしECSが旧revisionへ自動復帰し切らなかったため、approved revisionへの安全な手動復帰を行った。automatic rollbackの成功は実証済みとは扱わない
-- runtime検証後、artifact stageへのexact cleanup plan（`create=0`、`update=0`、`delete=49`）をapplyし、483.391秒で完了した。post-cleanup artifact convergence planは`create=0`、`update=0`、`delete=0`である。read-only確認ではALB、Valkey、Hooklane VPC endpoint、VPC、CloudWatch Logs、Secrets Manager secret、IAM role、Cloud Map、active ECS cluster、ECS service、running/pending task、active task definitionは0件であり、ECR repository 3件、lifecycle policy 3件、approved image 3件、remote state S3 bucketは保持されている。ECS `describe-clusters`には課金・service・taskを伴わない`INACTIVE` tombstoneが1件残る
+- `foundation` planは49/0/0、apply/readinessはPASSである。`runtime` planは0/3/0、apply/healthはPASSである。runtime smokeは4/4 PASSで、項目はnormal_delivery、idempotency_same、idempotency_conflict、aggregate passedである。image proof modeはAPIとworkerが`configuration_backed`、mock-sinkが`direct_plan`である
+- `cleanup` planは0/0/49、cleanupはPASSである。final state 6 resources、ECR repository 3、ECR lifecycle policy 3、required image 3を保持し、charge-heavy 0、ECR digest/contract match、ECS service/task 0、INACTIVE tombstone 1、apply process terminatedである
+- receipt/diagnosticの不整合はapplication障害ではない。旧validatorがdelete planの`after=null`を`.get()`してAttributeErrorになったこと、cleanup-recoveryが本体receipt/diagnosticをロードせず初期false/nullを残したこと、diagnosticのcleanup statusを更新しなかったことがconfirmed root causeである
+- current harnessのfixtureは既存v1.4 85件と今回追加20件が全PASSで、nullable plan fallback、cleanup `after=null`、full-success coherence、failure/recovery atomic receipt、redactionを検証した
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
-- AWS runtimeでの同一retry eventのeventual success、pending recovery、in-flight workのgraceful shutdown、deployment circuit breakerによるautomatic rollback
-- 修正後のAWS runtimeにおけるworker／Valkey接続のlong-running stability、ECR Basic scanのseverity結果
+- production運用、long-running stability、AWS pending recovery、automatic rollback完了、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査
 
 ## 配布範囲
 

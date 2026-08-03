@@ -45,7 +45,7 @@ Hooklaneは、Webhook受付、Redis Streams queue、at-least-once配送、observ
 - API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない
 - Kubernetes NetworkPolicy、ingress TLS、egress firewallは対象外
 - Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない
-- remote state bootstrap S3 bucket、ECR artifact stage、foundation stage、runtime stageを明示承認の下で実行した。修正後workerを含む3 ECS serviceは40秒で`1/1/0`へ到達し、worker health、normal delivery、idempotencyの同一event収束と409、HTTP 503 retry scheduleとattempt増加、attempt 5のdead-letter、graceful worker replacement、image-pull failure検出とhealthy target維持を確認した。AWS上の同一retry eventのeventual success、pending recovery、in-flight workのgraceful shutdown、automatic rollback完了、long-running stabilityは未確認である。実行後はartifact stageへ戻し、bootstrap S3、ECR repository、lifecycle policy、approved image以外のAWS resourceを削除した。AWS Secrets Managerのsecret valueは閲覧していない。secret rotation、Secret lifecycle、worker／Valkey接続の長期安定性は未実証である。ECR Basic scanはapproved tagへのmanual要求が`UNSUPPORTED`であり、severity結果、image signing、SBOM attestationは未実証である
+- source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。production運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査は未確認である。
 - Redisにapplication payloadを保存するため、本番導入前にdata classification、retention、backup、encryptionを設計する必要がある
 - scanner databaseの更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない
 
@@ -55,7 +55,7 @@ security controlと残存riskの詳細は[security](SECURITY.md)を参照する�
 
 - GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。現在branchはPush後のPR CIで確認する
 - GitHub Actionsはcloud productionや本番trafficを検証しない
-- sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない
+- 上記AWS evidenceのreceipt SHA-256は`a1aa6f342f6b052525feba59afc6bef961b11b58b82804a37f6e34c3d305922e`、diagnostic SHA-256は`27b8d08b4c13af84090b7927d2d86a8fc6acce243e6bf7e4153827aadedaa4bd`である。tracked evidenceはcredential、token、account ID、ARN、endpoint、registry hostname、個人情報を含まない。
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
 - prebuilt container image、container registry、release artifact、binary distributionは配布しない。application imageはlocal buildする

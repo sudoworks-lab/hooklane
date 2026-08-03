@@ -102,9 +102,9 @@ make cluster-down
 
 ## AWS Terraform foundation
 
-[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。`artifact` stageはECR repositoryとlifecycle policyだけを作成し、時間課金の基盤resourceを作らない。`foundation` stageではECS serviceを0 taskに保ち、ECR imageのpushとdigest確認後の`runtime` stageだけが各serviceを起動する。修正後workerを含む3 ECS serviceのruntime検証は40秒でhealthyへ到達し、検証後はartifact stageへcleanupして課金resourceを残していない。NAT Gatewayはdefaultで無効、ECS taskはpublic IPを持たず、APIはALB security groupからだけ受信する。詳細は[sanitized AWS evidence](docs/aws/runtime-evidence.json)を参照する。
+[`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。詳細は[sanitized AWS evidence](docs/aws/runtime-evidence.json)を参照する。
 
-sanitized AWS evidenceのsource commitは`50af2be9d0cc0e6a61ab8ab8a53f924aa7d8fc7e`、image source commitは`5a2c3cd7e99fda46b9622abea30e40eb4c91dca9`である。現在HEADのapplication / Helm / Terraform修正はlocal verification済みだが、現在HEADおよび新immutable imageはAWS再検証前であり、このevidenceを現在HEADのAWS実証とは扱わない。
+このAWS evidenceはproduction運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査を実証しない。
 
 ```bash
 make terraform-validate
