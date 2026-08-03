@@ -48,13 +48,16 @@ source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalid
 
 ## GitHub Actions
 
-- GitHub hosted Actionsは公開mainの旧baselineで実行済み。現在branchはPush後のPR CIで確認する
+PR #1のPR HEADは`f7d2db9822215ecb8ca81e335982fb47a5c019e8`であり、PR titleは`feat: add AWS-validated Hooklane deployment and safety contracts`である。これに対するHosted CI Run #9 / Run ID `30791958394`はsuccessだった。
+
 - Quality, security, and chart gatesはsuccess
 - kind delivery and recovery E2Eはsuccess
+- PR #1はmerge commit `9c342097a654c4f7f29e6c548c5870c30d7e7d8a`でmainへmerge済み
+- merge commit固有のpush-triggered CI結果は、tracked evidence上で独立確認済みとは扱わない
 - success時のfailure diagnostics uploadはskip、cleanupはsuccess
 - Node.js 20 deprecation annotationは現行workflowで発生していない
 
-Hosted CIは公開mainの旧baselineに対する自動検証であり、cloud productionや本番trafficの実績ではない。
+Hosted CIはcloud production、本番traffic、AWS runtimeの証拠ではない。AWS revalidationのsource commitと証拠境界は、上記のAWS evidence scopeおよび[`docs/aws/runtime-evidence.json`](aws/runtime-evidence.json)を正本とし、current main自体をAWS-tested sourceとは扱わない。
 
 ## security scan
 

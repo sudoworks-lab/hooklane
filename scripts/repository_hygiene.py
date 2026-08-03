@@ -209,6 +209,14 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
 
     evidence = RELEASE_EVIDENCE.read_text(encoding="utf-8")
     notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8")
+    stale_hosted_ci_claims = (
+        "公開mainの旧" + "baseline",
+        "現在branchはPush後のPR CIで" + "確認する",
+    )
+    for claim in stale_hosted_ci_claims:
+        if claim in evidence:
+            fail(f"release evidence contains stale Hosted CI claim: {claim}")
+
     for marker in (
         "F001〜F029",
         "29/29",
@@ -220,13 +228,26 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         "make observability-smoke",
         "make incident-smoke",
         "make clean-room",
-        "GitHub hosted Actionsは公開mainの旧baselineで実行済み",
         "Quality, security, and chart gatesはsuccess",
         "kind delivery and recovery E2Eはsuccess",
+        "PR #1のPR HEADは",
+        "f7d2db9822215ecb8ca81e335982fb47a5c019e8",
+        "Hosted CI Run #9",
+        "Run ID `30791958394`",
+        "success",
+        "PR #1はmerge commit",
+        "9c342097a654c4f7f29e6c548c5870c30d7e7d8a",
+        "merge commit固有のpush-triggered CI結果は",
+        "tracked evidence上で独立確認済みとは扱わない",
         "source-only",
     ):
         if marker not in evidence:
             fail(f"release evidence is missing: {marker}")
+    if not re.search(
+        r"Hosted CI Run #9\s*/\s*Run ID `30791958394`[^\n]*success",
+        evidence,
+    ):
+        fail("release evidence does not link Hosted CI Run #9, Run ID, and success")
     for section in (
         "## 対象",
         "## vendored third-party sourceなし",

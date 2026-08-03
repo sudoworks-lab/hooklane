@@ -2,10 +2,11 @@
 
 Hooklaneは、Webhookを受け付けてRedis Streamsへ保存し、非同期workerで配送するWebhook配送基盤。受付と配送を分離し、downstream障害をAPI受付の成否から切り離す。
 
-- API、Redis Streams、worker、mock sink（既定）で構成する。配送先は`HOOKLANE_DOWNSTREAM_URL`でcontrolled endpointへ切り替えられる
-- retry、dead-letter、pending recovery、配送status参照を持つ
-- ローカル検証とGitHub Actionsでquality、security、Kubernetes contractを確認する
-- cloud production、実在する外部downstream、長期負荷の実績は持たない
+- 解決する問題: Webhook受付とdownstream配送を分離し、受付の成功と配送の失敗を切り分ける
+- reliability contract: persist-before-202、at-least-once、idempotency、retry/DLQ、pending recoveryを提供する
+- operational scope: metrics、alerts、Runbook、incident drill、CI gatesをrepository内で検証する
+- verified deployment scope: Compose、kind、限定AWS revalidationを扱う。Hosted CIはAWS runtimeやcloud productionの証拠ではない
+- limitation: cloud production、本番traffic、long-running stabilityの実績を持たず、production-readyとは主張しない
 
 ## 主な機能
 
@@ -44,7 +45,7 @@ API / worker / mock sink -> Prometheus -> Grafana / alerts -> Runbooks
 
 - quality、security、Helm／Kubernetes、文書contractは`make verify`で機械検証する
 - Compose、kind delivery and recovery E2E、rolling update／rollback、observability、incident drillを再現する
-- GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eのsuccessを記録済みであり、現在branchはPush後のPR CIで確認する
+- GitHub hosted ActionsのPR HEAD、Run #9、merge commitの関係は[検証根拠](docs/RELEASE_EVIDENCE.md)を正本とする。merge commit固有のpush-triggered CI結果はtracked evidence上で独立確認済みとは扱わない。Hosted CIはcloud production、本番traffic、AWS runtimeの証拠ではない。
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 
 これはcloud production、実在する外部downstream、multi-node／multi-zone、長時間負荷、本番traffic、30日SLO達成の実績ではない。制約の正本は[制約](docs/LIMITATIONS.md)に置く。
@@ -104,7 +105,7 @@ make cluster-down
 
 [`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。詳細は[sanitized AWS evidence](docs/aws/runtime-evidence.json)を参照する。
 
-このAWS evidenceはproduction運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査を実証しない。
+このAWS evidenceはcurrent main自体をAWS-tested sourceとして扱うものではなく、production運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査を実証しない。
 
 ```bash
 make terraform-validate
@@ -159,7 +160,7 @@ make clean-room
 
 ## GitHub Actions
 
-[ci.yml](.github/workflows/ci.yml)はpull requestとmainで`make verify`を実行し、その成功後に`make e2e-kind`を実行する。記録済みのquality / security / chart gates、kind delivery and recovery E2E、cleanupのsuccessは公開mainの旧baselineに対するものであり、現在branchはPush後のPR CIで確認する。成功時のfailure diagnostics uploadはskipとなる。
+[ci.yml](.github/workflows/ci.yml)はpull requestとmainで`make verify`を実行し、その成功後に`make e2e-kind`を実行する。PR #1のPR HEADに対するHosted CI Run #9はsuccessであり、PR #1はmerge commitでmainへmerge済みである。merge commit固有のpush-triggered CI結果はtracked evidence上で独立確認済みとは扱わない。成功時のfailure diagnostics uploadはskipとなる。詳細な履歴は[検証根拠](docs/RELEASE_EVIDENCE.md)を参照する。
 
 workflowはread-only permission、full commit SHAで固定したaction、secretを要求しないtriggerを使う。Hosted CIの成功はcloud productionや本番trafficの実績を意味しない。
 
@@ -175,6 +176,7 @@ workflowはread-only permission、full commit SHAで固定したaction、secret�
 - [開発と検証方法](docs/DEVELOPMENT.md)
 - [v0.1.1 release notes](docs/releases/v0.1.1.md)
 - [ADR](docs/adr/0001-redis-streams-at-least-once.md)
+- [AWS scope extension ADR](docs/adr/0005-aws-scope-extension.md)
 
 ## cleanup
 

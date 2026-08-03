@@ -18,6 +18,8 @@ DEVELOPMENT = ROOT / "docs" / "DEVELOPMENT.md"
 RELEASE_EVIDENCE = ROOT / "docs" / "RELEASE_EVIDENCE.md"
 AWS_RUNTIME_EVIDENCE = ROOT / "docs" / "aws" / "runtime-evidence.json"
 F004_MIGRATION_ADR = ROOT / "docs" / "adr" / "0004-f004-destination-contract-migration.md"
+AWS_SCOPE_EXTENSION_ADR = ROOT / "docs" / "adr" / "0005-aws-scope-extension.md"
+GOAL = ROOT / "docs" / "GOAL.md"
 RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.1.md"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 LICENSE = ROOT / "LICENSE"
@@ -104,6 +106,19 @@ MAKE_TARGET = re.compile(r"^([a-z][a-z0-9_.-]*):", re.MULTILINE)
 SCRIPT_REFERENCE = re.compile(r"\bbash\s+(scripts/[a-zA-Z0-9_.-]+)")
 METRIC_REFERENCE = re.compile(r"\bhooklane_[a-z0-9_]+\b")
 METRIC_DEFINITION = re.compile(r'"(hooklane_[a-z0-9_]+)"\s*:')
+CURRENT_STATE_DOCUMENTS = (
+    README,
+    ROOT / "docs" / "ARCHITECTURE.md",
+    ROOT / "docs" / "SECURITY.md",
+    ROOT / "docs" / "LIMITATIONS.md",
+    RELEASE_EVIDENCE,
+    ROOT / "infra" / "README.md",
+)
+STALE_HOSTED_CI_MARKERS = (
+    "公開mainの旧" + "baseline",
+    "現在branchはPush後のPR CIで" + "確認する",
+)
+HOSTED_CI_BOUNDARY = "Hosted CIはcloud production、本番traffic、AWS runtimeの証拠ではない。"
 
 
 class DocsCheckError(RuntimeError):
@@ -256,7 +271,12 @@ def validate_release_evidence_contract() -> None:
         "Gitleaks",
         "OSV-Scanner",
         "Trivy",
-        "GitHub hosted Actionsは公開mainの旧baselineで実行済み",
+        "PR #1のPR HEADは",
+        "f7d2db9822215ecb8ca81e335982fb47a5c019e8",
+        "Hosted CI Run #9 / Run ID `30791958394`はsuccess",
+        "PR #1はmerge commit `9c342097a654c4f7f29e6c548c5870c30d7e7d8a`でmainへmerge済み",
+        "merge commit固有のpush-triggered CI結果は、tracked evidence上で独立確認済みとは扱わない",
+        HOSTED_CI_BOUNDARY,
         "Quality, security, and chart gatesはsuccess",
         "kind delivery and recovery E2Eはsuccess",
         "source-only",
@@ -396,14 +416,6 @@ def validate_current_aws_evidence_contract() -> None:
     if not isinstance(sources, dict) or any(sources.get(key) != value for key, value in expected_sources.items()):
         fail("sanitized AWS runtime evidence artifact SHA provenance is unexpected")
 
-    current_state_documents = (
-        README,
-        ROOT / "docs" / "ARCHITECTURE.md",
-        ROOT / "docs" / "SECURITY.md",
-        ROOT / "docs" / "LIMITATIONS.md",
-        RELEASE_EVIDENCE,
-        ROOT / "infra" / "README.md",
-    )
     scope_markers = (
         "123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b",
         "git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b",
@@ -423,7 +435,7 @@ def validate_current_aws_evidence_contract() -> None:
         "INACTIVE tombstone",
         "apply process terminated",
     )
-    for document in current_state_documents:
+    for document in CURRENT_STATE_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
         for marker in scope_markers:
             if marker not in text:
@@ -431,20 +443,50 @@ def validate_current_aws_evidence_contract() -> None:
                     "current-state documentation is missing AWS evidence scope: "
                     f"{document.relative_to(ROOT)}"
                 )
-    github_scope_documents = (
-        README,
-        ROOT / "infra" / "README.md",
-        ROOT / "docs" / "ARCHITECTURE.md",
-        ROOT / "docs" / "LIMITATIONS.md",
-        RELEASE_EVIDENCE,
-    )
-    for document in github_scope_documents:
+    for document in CURRENT_STATE_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
-        if "公開mainの旧baseline" not in text or "Push後のPR CI" not in text:
+        for marker in STALE_HOSTED_CI_MARKERS:
+            if marker in text:
+                fail(
+                    "current-state documentation retains a stale hosted-CI phrase: "
+                    f"{document.relative_to(ROOT)}: {marker}"
+                )
+        if "Hosted CI" in text and HOSTED_CI_BOUNDARY not in text:
             fail(
-                "current-state documentation is missing hosted-CI generation scope: "
+                "current-state documentation treats Hosted CI without the AWS/production boundary: "
                 f"{document.relative_to(ROOT)}"
             )
+    if not AWS_SCOPE_EXTENSION_ADR.is_file():
+        fail("AWS scope extension ADR is missing")
+    goal = GOAL.read_text(encoding="utf-8")
+    scope_extension = AWS_SCOPE_EXTENSION_ADR.read_text(encoding="utf-8")
+    for marker in (
+        "Hooklane Original P0 Goal",
+        "Terraform/cloud deploymentがNon-goalだったのはP0時点のscope",
+        "adr/0005-aws-scope-extension.md",
+        "最初からAWSがGoalだったようには扱わない",
+    ):
+        if marker not in goal:
+            fail(f"Original P0 Goal scope boundary is missing: {marker}")
+    for marker in (
+        "Original P0 boundary",
+        "Original P0 Goal",
+        "AWS/Terraformの限定vertical slice",
+        "ECS/Fargate deployment",
+        "application delivery semanticsを再設計するものではない",
+        "cloud productionの認定ではない",
+        "automatic deploymentを導入しない",
+        "Human approval boundary",
+        "123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b",
+        "current main自体をAWS-tested sourceとは扱わず",
+        "long-running stability",
+        "pending recovery",
+        "retry／DLQ remote injection",
+    ):
+        if marker not in scope_extension:
+            fail(f"AWS scope extension ADR is missing: {marker}")
+    if "docs/GOAL.md" not in scope_extension:
+        fail("AWS scope extension ADR must reference the Original P0 Goal")
     if not F004_MIGRATION_ADR.is_file():
         fail("F004 contract migration ADR is missing")
     migration = F004_MIGRATION_ADR.read_text(encoding="utf-8")
@@ -466,7 +508,7 @@ def validate_current_aws_evidence_contract() -> None:
         "現在HEADおよび新immutable imageはAWS再検証前",
         "現在HEADのAWS実証とは扱わない",
     )
-    for document in current_state_documents:
+    for document in CURRENT_STATE_DOCUMENTS:
         text = document.read_text(encoding="utf-8")
         for claim in stale_claims:
             if claim in text:
