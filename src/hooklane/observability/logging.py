@@ -32,6 +32,7 @@ class LogEvent(StrEnum):
     DELIVERY_FAILED = "delivery_failed"
     RETRY_SCHEDULED = "retry_scheduled"
     DEAD_LETTERED = "dead_lettered"
+    QUEUE_RECORD_QUARANTINED = "queue_record_quarantined"
     DELIVERY_RECEIVED = "delivery_received"
     WORKER_STARTED = "worker_started"
     WORKER_STOPPED = "worker_stopped"
@@ -65,6 +66,8 @@ REASON_CODES = frozenset(
         "http_429",
         "http_5xx",
         "http_4xx",
+        "invariant_violation",
+        "invalid_message",
     }
 )
 EVENT_STATUSES = frozenset(

@@ -188,6 +188,55 @@ return 1
 """
 
     _RELEASE_DUE_RETRY_SCRIPT = """
+local function is_uuid(value)
+  if not value or #value ~= 36 then
+    return false
+  end
+  if string.sub(value, 9, 9) ~= '-' or string.sub(value, 14, 14) ~= '-'
+      or string.sub(value, 19, 19) ~= '-' or string.sub(value, 24, 24) ~= '-' then
+    return false
+  end
+  local compact = string.gsub(value, '-', '')
+  return #compact == 32 and string.match(compact, '^[0-9a-fA-F]+$') ~= nil
+end
+
+local function field_value(fields, field_name)
+  for index = 1, #fields, 2 do
+    if fields[index] == field_name then
+      return fields[index + 1]
+    end
+  end
+  return nil
+end
+
+local function remove_invalid_record(event_id, status_key)
+  local status_type = redis.call('TYPE', status_key).ok
+  local safe_status = false
+  if status_type == 'hash'
+      and is_uuid(event_id)
+      and redis.call('HGET', status_key, 'event_id') == event_id then
+    local attempt_count = redis.call('HGET', status_key, 'attempt_count')
+    local stream_id = redis.call('HGET', status_key, 'stream_id')
+    if redis.call('HGET', status_key, 'status') == ARGV[5]
+        and attempt_count
+        and string.match(attempt_count, '^%d+$') ~= nil
+        and tonumber(attempt_count) >= 1
+        and stream_id
+        and string.match(stream_id, '^%d+%-%d+$') ~= nil then
+      safe_status = true
+    end
+  end
+  if safe_status then
+    redis.call(
+      'HSET', status_key,
+      'status', ARGV[6],
+      'last_error_class', ARGV[7]
+    )
+  end
+  redis.call('ZREM', KEYS[2], event_id)
+  return 2
+end
+
 local stream_type = redis.call('TYPE', KEYS[1]).ok
 local retry_type = redis.call('TYPE', KEYS[2]).ok
 if stream_type ~= 'stream' then
@@ -208,14 +257,29 @@ end
 
 local event_id = event_ids[1]
 local status_key = ARGV[3] .. event_id
-if redis.call('HGET', status_key, 'status') ~= ARGV[5] then
-  return redis.error_reply('ERR event is not retry scheduled')
+local status_type = redis.call('TYPE', status_key).ok
+if status_type ~= 'hash' then
+  return remove_invalid_record(event_id, status_key)
 end
+if not is_uuid(event_id) or redis.call('HGET', status_key, 'event_id') ~= event_id then
+  return remove_invalid_record(event_id, status_key)
+end
+if redis.call('HGET', status_key, 'status') ~= ARGV[5] then
+  return remove_invalid_record(event_id, status_key)
+end
+
 local stream_id = redis.call('HGET', status_key, 'stream_id')
+if not stream_id or string.match(stream_id, '^%d+%-%d+$') == nil then
+  return remove_invalid_record(event_id, status_key)
+end
 local pending = redis.call('XPENDING', KEYS[1], ARGV[1], stream_id, stream_id, 1)
 local message = redis.call('XRANGE', KEYS[1], stream_id, stream_id)
 if #pending ~= 1 or #message ~= 1 then
-  return redis.error_reply('ERR scheduled stream message is not pending')
+  return remove_invalid_record(event_id, status_key)
+end
+local message_event_id = field_value(message[1][2], 'event_id')
+if message_event_id ~= event_id then
+  return remove_invalid_record(event_id, status_key)
 end
 
 local new_stream_id = redis.call('XADD', KEYS[1], '*', unpack(message[1][2]))
@@ -234,36 +298,154 @@ return 1
 """
 
     _CLAIM_STALE_PENDING_SCRIPT = """
+local function is_uuid(value)
+  if not value or #value ~= 36 then
+    return false
+  end
+  if string.sub(value, 9, 9) ~= '-' or string.sub(value, 14, 14) ~= '-'
+      or string.sub(value, 19, 19) ~= '-' or string.sub(value, 24, 24) ~= '-' then
+    return false
+  end
+  local compact = string.gsub(value, '-', '')
+  return #compact == 32 and string.match(compact, '^[0-9a-fA-F]+$') ~= nil
+end
+
+local function field_value(fields, field_name)
+  for index = 1, #fields, 2 do
+    if fields[index] == field_name then
+      return fields[index + 1]
+    end
+  end
+  return nil
+end
+
+local function pending_disposition(fields, stream_id)
+  local event_id = field_value(fields, 'event_id')
+  if not is_uuid(event_id) then
+    return 'invariant_violation'
+  end
+  local status_key = ARGV[4] .. event_id
+  if redis.call('TYPE', status_key).ok ~= 'hash' then
+    return 'invariant_violation'
+  end
+  if redis.call('HGET', status_key, 'event_id') ~= event_id
+      or redis.call('HGET', status_key, 'stream_id') ~= stream_id then
+    return 'invariant_violation'
+  end
+  local status = redis.call('HGET', status_key, 'status')
+  if status == ARGV[7] then
+    return 'retry_scheduled'
+  end
+  if status == ARGV[5] or status == ARGV[6] then
+    return 'delivery'
+  end
+  return 'invariant_violation'
+end
+
 local stream_type = redis.call('TYPE', KEYS[1]).ok
 if stream_type ~= 'stream' then
   return redis.error_reply('ERR event stream has incompatible type')
 end
 
 local pending = redis.call(
-  'XPENDING', KEYS[1], ARGV[1], 'IDLE', ARGV[3], '-', '+', ARGV[6]
+  'XPENDING', KEYS[1], ARGV[1], 'IDLE', ARGV[3], '-', '+', ARGV[8]
 )
 for index = 1, #pending do
   local stream_id = pending[index][1]
   local message = redis.call('XRANGE', KEYS[1], stream_id, stream_id)
   if #message == 1 then
     local fields = message[1][2]
-    local event_id = nil
-    for field_index = 1, #fields, 2 do
-      if fields[field_index] == 'event_id' then
-        event_id = fields[field_index + 1]
-      end
-    end
-    if event_id and redis.call('HGET', ARGV[4] .. event_id, 'status') == ARGV[5] then
+    local disposition = pending_disposition(fields, stream_id)
+    if disposition ~= 'retry_scheduled' then
       local claimed = redis.call(
         'XCLAIM', KEYS[1], ARGV[1], ARGV[2], ARGV[3], stream_id
       )
       if #claimed == 1 then
-        return stream_id
+        return {stream_id, disposition}
       end
     end
   end
 end
 return false
+"""
+
+    _QUARANTINE_MESSAGE_SCRIPT = """
+local function is_uuid(value)
+  if not value or #value ~= 36 then
+    return false
+  end
+  if string.sub(value, 9, 9) ~= '-' or string.sub(value, 14, 14) ~= '-'
+      or string.sub(value, 19, 19) ~= '-' or string.sub(value, 24, 24) ~= '-' then
+    return false
+  end
+  local compact = string.gsub(value, '-', '')
+  return #compact == 32 and string.match(compact, '^[0-9a-fA-F]+$') ~= nil
+end
+
+local function field_value(fields, field_name)
+  for index = 1, #fields, 2 do
+    if fields[index] == field_name then
+      return fields[index + 1]
+    end
+  end
+  return nil
+end
+
+local stream_type = redis.call('TYPE', KEYS[1]).ok
+local quarantine_type = redis.call('TYPE', KEYS[2]).ok
+if stream_type ~= 'stream' then
+  return redis.error_reply('ERR event stream has incompatible type')
+end
+if quarantine_type ~= 'none' and quarantine_type ~= 'stream' then
+  return redis.error_reply('ERR quarantine stream has incompatible type')
+end
+
+local pending = redis.call('XPENDING', KEYS[1], ARGV[2], ARGV[1], ARGV[1], 1)
+local message = redis.call('XRANGE', KEYS[1], ARGV[1], ARGV[1])
+if #pending ~= 1 or #message ~= 1 then
+  return redis.error_reply('ERR malformed stream message is not pending')
+end
+
+local fields = message[1][2]
+local event_id = field_value(fields, 'event_id')
+local safe_status = false
+local status_key = nil
+if is_uuid(event_id) then
+  status_key = ARGV[4] .. event_id
+  if redis.call('TYPE', status_key).ok == 'hash'
+      and redis.call('HGET', status_key, 'event_id') == event_id
+      and redis.call('HGET', status_key, 'stream_id') == ARGV[1]
+      and (
+        redis.call('HGET', status_key, 'status') == ARGV[6]
+        or redis.call('HGET', status_key, 'status') == ARGV[7]
+      ) then
+    safe_status = true
+  end
+end
+
+local quarantine_fields = {
+  'source_stream_id', ARGV[1],
+  'reason_code', ARGV[3]
+}
+if is_uuid(event_id) then
+  table.insert(quarantine_fields, 'event_id')
+  table.insert(quarantine_fields, event_id)
+end
+local quarantine_id = redis.call(
+  'XADD', KEYS[2], '*', unpack(quarantine_fields)
+)
+local acknowledged = redis.call('XACK', KEYS[1], ARGV[2], ARGV[1])
+if acknowledged ~= 1 then
+  return redis.error_reply('ERR malformed stream message was not acknowledged')
+end
+if safe_status then
+  redis.call(
+    'HSET', status_key,
+    'status', ARGV[5],
+    'last_error_class', ARGV[3]
+  )
+end
+return quarantine_id
 """
 
     _MOVE_TO_DEAD_LETTER_SCRIPT = """
@@ -402,6 +584,17 @@ return dead_letter_id
                 reason_code="redis_error",
             )
 
+    def _record_queue_quarantine(self, reason_code: str) -> None:
+        if self._metrics is not None:
+            self._metrics.record_queue_quarantine(reason_code)
+        if self._logger is not None:
+            self._logger.emit(
+                LogEvent.QUEUE_RECORD_QUARANTINED,
+                level=LogLevel.WARNING,
+                outcome="failure",
+                reason_code=reason_code,
+            )
+
     @property
     def stream_key(self) -> str:
         """Return the Redis Stream key used for accepted events."""
@@ -424,6 +617,12 @@ return dead_letter_id
         """Return the stream used for terminal delivery failures."""
 
         return f"{self._namespace}:dead-letter"
+
+    @property
+    def quarantine_key(self) -> str:
+        """Return the internal stream used to isolate malformed queue records."""
+
+        return f"{self._namespace}:quarantine"
 
     def idempotency_key(self, value: str) -> str:
         """Return a Redis key that does not disclose the caller-provided key."""
@@ -569,6 +768,31 @@ return dead_letter_id
             self._record_redis_failure("ensure_consumer_group")
             raise EventStoreUnavailable from None
 
+    async def _quarantine_malformed_message(
+        self,
+        stream_id: str,
+        group_name: str,
+        reason_code: str,
+    ) -> None:
+        try:
+            await self._client.eval(
+                self._QUARANTINE_MESSAGE_SCRIPT,
+                2,
+                self.stream_key,
+                self.quarantine_key,
+                stream_id,
+                group_name,
+                reason_code,
+                f"{self._namespace}:event:",
+                EventStatus.DEAD_LETTER.value,
+                EventStatus.QUEUED.value,
+                EventStatus.DELIVERING.value,
+            )
+        except RedisError:
+            self._record_redis_failure("quarantine_message")
+            raise EventStoreUnavailable from None
+        self._record_queue_quarantine(reason_code)
+
     async def read_next(self, group_name: str, consumer_name: str) -> QueuedEvent | None:
         """Claim one new message for a consumer, leaving it pending until acked."""
 
@@ -600,8 +824,12 @@ return dead_letter_id
                 accepted_at_ms=int(fields["accepted_at_ms"]),
             )
         except (KeyError, TypeError, ValueError):
-            self._record_redis_failure("read_next")
-            raise EventStoreUnavailable from None
+            await self._quarantine_malformed_message(
+                stream_id,
+                group_name,
+                "invalid_message",
+            )
+            return None
 
     async def claim_stale_pending(
         self,
@@ -614,8 +842,8 @@ return dead_letter_id
         if min_idle_ms < 0:
             raise ValueError("pending idle threshold must not be negative")
         try:
-            stream_id = cast(
-                str | None,
+            claim_result = cast(
+                list[str] | None,
                 await self._client.eval(
                     self._CLAIM_STALE_PENDING_SCRIPT,
                     1,
@@ -624,12 +852,15 @@ return dead_letter_id
                     consumer_name,
                     min_idle_ms,
                     f"{self._namespace}:event:",
+                    EventStatus.QUEUED.value,
                     EventStatus.DELIVERING.value,
+                    EventStatus.RETRY_SCHEDULED.value,
                     100,
                 ),
             )
-            if stream_id is None:
+            if claim_result is None:
                 return None
+            stream_id, disposition = claim_result
             messages = cast(
                 list[tuple[str, dict[str, str]]],
                 await self._client.xrange(
@@ -647,6 +878,13 @@ return dead_letter_id
             raise EventStoreUnavailable
 
         claimed_stream_id, fields = messages[0]
+        if disposition != "delivery":
+            await self._quarantine_malformed_message(
+                claimed_stream_id,
+                group_name,
+                "invariant_violation",
+            )
+            return None
         try:
             event = EventRequest(
                 event_type=fields["event_type"],
@@ -659,8 +897,12 @@ return dead_letter_id
                 accepted_at_ms=int(fields["accepted_at_ms"]),
             )
         except (KeyError, TypeError, ValueError):
-            self._record_redis_failure("claim_pending")
-            raise EventStoreUnavailable from None
+            await self._quarantine_malformed_message(
+                claimed_stream_id,
+                group_name,
+                "invalid_message",
+            )
+            return None
 
     async def mark_delivery_started(self, queued_event: QueuedEvent) -> int:
         """Increment attempts and expose that the message is being delivered."""
@@ -727,7 +969,7 @@ return dead_letter_id
         """Atomically ack and requeue one due pending message for redelivery."""
 
         try:
-            released = await self._client.eval(
+            released = int(await self._client.eval(
                 self._RELEASE_DUE_RETRY_SCRIPT,
                 2,
                 self.stream_key,
@@ -737,11 +979,16 @@ return dead_letter_id
                 f"{self._namespace}:event:",
                 EventStatus.QUEUED.value,
                 EventStatus.RETRY_SCHEDULED.value,
-            )
+                EventStatus.DEAD_LETTER.value,
+                "invariant_violation",
+            ))
         except RedisError:
             self._record_redis_failure("release_retry")
             raise EventStoreUnavailable from None
-        return bool(released)
+        if released == 2:
+            self._record_queue_quarantine("invariant_violation")
+            return False
+        return released == 1
 
     async def move_to_dead_letter(
         self,

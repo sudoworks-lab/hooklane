@@ -42,6 +42,7 @@ REDIS_OPERATIONS = frozenset(
         "schedule_retry",
         "release_retry",
         "dead_letter",
+        "quarantine_message",
         "queue_snapshot",
     }
 )
@@ -68,6 +69,7 @@ METRIC_LABELS: dict[str, tuple[str, ...]] = {
     "hooklane_delivery_completion_total": ("service", "outcome"),
     "hooklane_retry_scheduled_total": ("service", "reason_code"),
     "hooklane_dead_letter_total": ("service", "reason_code"),
+    "hooklane_queue_quarantined_total": ("service", "reason_code"),
     "hooklane_worker_in_flight": ("service",),
     "hooklane_pending_messages": ("service",),
     "hooklane_redis_operation_failures_total": ("service", "operation"),
@@ -187,6 +189,12 @@ class HooklaneMetrics:
             METRIC_LABELS["hooklane_dead_letter_total"],
             registry=self.registry,
         )
+        self.queue_quarantined = Counter(
+            "hooklane_queue_quarantined_total",
+            "Queue records removed from normal processing after bounded validation.",
+            METRIC_LABELS["hooklane_queue_quarantined_total"],
+            registry=self.registry,
+        )
         self.worker_in_flight = Gauge(
             "hooklane_worker_in_flight",
             "Delivery attempts currently in flight.",
@@ -289,6 +297,10 @@ class HooklaneMetrics:
     def record_dead_letter(self, reason_code: str) -> None:
         reason = _bounded(reason_code, REASON_CODES, "reason code")
         self.dead_letter.labels(service=self.service, reason_code=reason).inc()
+
+    def record_queue_quarantine(self, reason_code: str) -> None:
+        reason = _bounded(reason_code, REASON_CODES, "reason code")
+        self.queue_quarantined.labels(service=self.service, reason_code=reason).inc()
 
     def record_redis_failure(self, operation: str) -> None:
         bounded_operation = _bounded(operation, REDIS_OPERATIONS, "Redis operation")
