@@ -62,11 +62,11 @@
       "steps": [
         "make test-integration TESTS='tests/integration/test_worker_delivery.py tests/integration/test_mock_sink.py' を実行する",
         "正常配送後にstatusがdeliveredとなり、attempt countが更新され、streamのmessageがack済みになることを確認する",
-        "sink失敗時にはmessageがackされず、配送先がproject内mock sinkまたは明示allowlist外へ変更できないことを確認する",
+        "sink失敗時にはmessageがackされず、配送先はrequestから変更できず、未指定時はproject内mock sinkを使うことを確認する",
         "at-least-onceとevent IDによるdownstream重複排除contractをcode上の設定またはcontract testで確認する"
       ],
       "passes": true,
-      "verified_at": "2026-07-11T08:35:30+09:00",
+      "verified_at": "2026-07-27T14:45:47+09:00",
       "blocked": false
     },
     {

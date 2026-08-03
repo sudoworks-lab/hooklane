@@ -77,6 +77,9 @@ def validate_quality_job(workflow: dict[str, object]) -> None:
         raise ContractError("quality job requires a bounded timeout")
     if "permissions" in quality:
         raise ContractError("quality job must not expand top-level permissions")
+    quality_environment = object_dict(quality.get("env"), "quality environment")
+    if quality_environment.get("HOOKLANE_TERRAFORM_REQUIRED") != "1":
+        raise ContractError("quality job must require Terraform instead of allowing a skip")
 
     steps = object_list(quality.get("steps"), "quality steps")
     action_references: list[str] = []
@@ -100,9 +103,40 @@ def validate_quality_job(workflow: dict[str, object]) -> None:
     if len(action_references) != 2:
         raise ContractError("baseline workflow must use checkout and setup-python only")
     combined_commands = "\n".join(run_commands)
-    for required in ("make ci-setup", "make verify"):
+    for required in (
+        "make ci-setup",
+        "terraform version",
+        'make images-build IMAGE_TAG="$IMAGE_TAG"',
+        "make observability-images",
+        'make image-contract IMAGE_TAG="$IMAGE_TAG"',
+        'make verify IMAGE_TAG="$IMAGE_TAG"',
+    ):
         if required not in combined_commands:
             raise ContractError(f"workflow does not call local target: {required}")
+    identity_steps = [
+        object_dict(raw_step, "quality step")
+        for raw_step in steps
+        if object_dict(raw_step, "quality step").get("name")
+        == "Determine immutable source image identity"
+    ]
+    if len(identity_steps) != 1:
+        raise ContractError("quality job must determine image identity in one named step")
+    identity = identity_steps[0]
+    identity_environment = object_dict(identity.get("env"), "quality image identity environment")
+    if identity_environment.get("PR_HEAD_SHA") != "${{ github.event.pull_request.head.sha }}":
+        raise ContractError("quality image identity must read the pull request head SHA")
+    identity_run = identity.get("run")
+    if not isinstance(identity_run, str):
+        raise ContractError("quality image identity step must run a shell contract")
+    for required in (
+        'if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then',
+        'SOURCE_SHA="$PR_HEAD_SHA"',
+        'SOURCE_SHA="$GITHUB_SHA"',
+        '[[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'IMAGE_TAG="git-$SOURCE_SHA"',
+    ):
+        if required not in identity_run:
+            raise ContractError(f"quality image identity is missing: {required}")
 
 
 def validate_e2e_job(workflow: dict[str, object]) -> None:
@@ -146,9 +180,37 @@ def validate_e2e_job(workflow: dict[str, object]) -> None:
     if len(action_references) != 3:
         raise ContractError("kind E2E must use checkout, setup-python, and upload-artifact")
     combined_commands = "\n".join(run_commands)
-    for required in ("make ci-setup", "make e2e-kind", "make cluster-down"):
+    for required in (
+        "make ci-setup",
+        'make e2e-kind IMAGE_TAG="$IMAGE_TAG"',
+        "make cluster-down",
+    ):
         if required not in combined_commands:
             raise ContractError(f"kind E2E job does not call local target: {required}")
+    identity_steps = [
+        object_dict(raw_step, "kind E2E step")
+        for raw_step in steps
+        if object_dict(raw_step, "kind E2E step").get("name")
+        == "Determine immutable source image identity"
+    ]
+    if len(identity_steps) != 1:
+        raise ContractError("kind E2E must determine image identity in one named step")
+    identity = identity_steps[0]
+    identity_environment = object_dict(identity.get("env"), "kind E2E image identity environment")
+    if identity_environment.get("PR_HEAD_SHA") != "${{ github.event.pull_request.head.sha }}":
+        raise ContractError("kind E2E image identity must read the pull request head SHA")
+    identity_run = identity.get("run")
+    if not isinstance(identity_run, str):
+        raise ContractError("kind E2E image identity step must run a shell contract")
+    for required in (
+        'if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then',
+        'SOURCE_SHA="$PR_HEAD_SHA"',
+        'SOURCE_SHA="$GITHUB_SHA"',
+        '[[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'IMAGE_TAG="git-$SOURCE_SHA"',
+    ):
+        if required not in identity_run:
+            raise ContractError(f"kind E2E image identity is missing: {required}")
     if artifact_step is None or artifact_step.get("if") != "failure()":
         raise ContractError("diagnostics must upload only after failure")
     artifact_options = object_dict(artifact_step.get("with"), "artifact options")
@@ -166,6 +228,7 @@ def validate_prohibited_content(text: str) -> None:
         "docker push",
         "helm install",
         ":latest",
+        "0.1.1",
     )
     for marker in prohibited:
         if marker in text:

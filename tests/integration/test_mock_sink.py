@@ -8,9 +8,9 @@ from httpx import ASGITransport
 
 from hooklane.delivery.sink import (
     DELIVERY_GUARANTEE,
-    DELIVERY_TARGET_ALLOWLIST,
     DOWNSTREAM_DEDUPLICATION_KEY,
     MOCK_SINK_ORIGIN,
+    MOCK_SINK_PATH,
     DeliveryFailed,
     MockSinkClient,
 )
@@ -42,8 +42,28 @@ async def test_mock_sink_deduplicates_at_least_once_delivery_by_event_id() -> No
     assert receipts.event_ids == frozenset({event.event_id})
     assert DELIVERY_GUARANTEE == "at-least-once"
     assert DOWNSTREAM_DEDUPLICATION_KEY == "event_id"
-    assert DELIVERY_TARGET_ALLOWLIST == frozenset({MOCK_SINK_ORIGIN})
     assert client.target_origin == MOCK_SINK_ORIGIN
+    assert client.target_url == f"{MOCK_SINK_ORIGIN}{MOCK_SINK_PATH}"
+
+
+@pytest.mark.asyncio
+async def test_controlled_downstream_endpoint_can_replace_mock_default() -> None:
+    receipts = MockSinkReceipts()
+    event = queued_event()
+    destination_url = f"http://controlled-downstream{MOCK_SINK_PATH}"
+    client = MockSinkClient(
+        destination_url=destination_url,
+        transport=ASGITransport(app=create_app(receipts=receipts)),
+    )
+
+    try:
+        await client.deliver(event)
+    finally:
+        await client.close()
+
+    assert client.target_url == destination_url
+    assert client.target_origin == "http://controlled-downstream"
+    assert receipts.event_ids == frozenset({event.event_id})
 
 
 @pytest.mark.asyncio

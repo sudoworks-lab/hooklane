@@ -121,10 +121,7 @@ async def test_redis_connection_details_are_not_returned_or_logged(
 ) -> None:
     password_marker = uuid4().hex
     payload_marker = uuid4().hex
-    url = (
-        f"unix:///tmp/hooklane-{password_marker}/missing.sock"
-        f"?password={password_marker}"
-    )
+    url = f"redis://runtime-user:{password_marker}@127.0.0.1:1/0"
     store = RedisEventStore.from_url(url)
 
     try:

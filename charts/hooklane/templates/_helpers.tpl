@@ -43,3 +43,26 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s:%s" .repository .tag -}}
 {{- end -}}
 {{- end }}
+
+{{- define "hooklane.validateRedisURL" -}}
+{{- $redisURL := .Values.config.redisURL | toString -}}
+{{- if and (eq $redisURL "") (not .Values.config.redisURLSecret.enabled) -}}
+{{- fail "config.redisURL must be provided when Secret injection is disabled" -}}
+{{- end -}}
+{{- if and (ne $redisURL "") (not (or (hasPrefix "redis://" $redisURL) (hasPrefix "rediss://" $redisURL))) -}}
+{{- fail "config.redisURL must use redis:// or rediss://; use redisURLSecret for credentials" -}}
+{{- end -}}
+{{- if and (ne $redisURL "") (or (contains "@" $redisURL) (contains "?" $redisURL) (contains "#" $redisURL) (regexMatch "[[:space:]]" $redisURL)) -}}
+{{- fail "config.redisURL must be credential-free and must not contain query, fragment, or whitespace; use redisURLSecret for credentials" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "hooklane.validateDownstreamURL" -}}
+{{- $downstreamURL := .Values.config.downstreamURL | toString -}}
+{{- if or (eq $downstreamURL "") (contains "@" $downstreamURL) (contains "?" $downstreamURL) (contains "#" $downstreamURL) (regexMatch "[[:space:]]" $downstreamURL) -}}
+{{- fail "config.downstreamURL must be an http(s) URL without credentials, query, fragment, or whitespace" -}}
+{{- end -}}
+{{- if not (regexMatch "^https?://[A-Za-z0-9][A-Za-z0-9.-]*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?(/[^?#[:space:]]*)?$" $downstreamURL) -}}
+{{- fail "config.downstreamURL must have a valid http(s) hostname and port" -}}
+{{- end -}}
+{{- end }}

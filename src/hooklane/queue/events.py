@@ -15,6 +15,7 @@ from redis.exceptions import RedisError, ResponseError
 from hooklane.domain.events import EventRequest, EventStatus
 from hooklane.observability.logging import LogEvent, LogLevel, StructuredLogger
 from hooklane.observability.metrics import HooklaneMetrics
+from hooklane.runtime_config import redis_config_from_environment, parse_redis_url
 
 
 class EventStoreUnavailable(Exception):
@@ -359,8 +360,26 @@ return dead_letter_id
     ) -> RedisEventStore:
         """Create a store without opening the Redis connection eagerly."""
 
+        redis_config = parse_redis_url(url)
         return cls(
-            Redis.from_url(url, decode_responses=True),
+            Redis.from_url(redis_config.value, decode_responses=True),
+            namespace=namespace,
+            metrics=metrics,
+            logger=logger,
+        )
+
+    @classmethod
+    def from_environment(
+        cls,
+        *,
+        namespace: str = "hooklane",
+        metrics: HooklaneMetrics | None = None,
+        logger: StructuredLogger | None = None,
+    ) -> RedisEventStore:
+        """Create a store from the Secret-bound environment contract."""
+
+        return cls.from_url(
+            redis_config_from_environment().value,
             namespace=namespace,
             metrics=metrics,
             logger=logger,

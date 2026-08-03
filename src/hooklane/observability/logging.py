@@ -60,6 +60,8 @@ REASON_CODES = frozenset(
         "redis_error",
         "timeout",
         "connection_error",
+        "http_1xx",
+        "http_3xx",
         "http_429",
         "http_5xx",
         "http_4xx",

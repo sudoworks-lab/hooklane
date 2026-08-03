@@ -475,77 +475,167 @@ def wait_all_workloads() -> None:
     print("[ok] application and observability workloads are Ready")
 
 
-def deploy_e2e_release() -> None:
+def deployment_template_image(resource: dict[str, Any], label: str) -> str:
+    spec = resource.get("spec")
+    template = spec.get("template") if isinstance(spec, dict) else None
+    template_spec = template.get("spec") if isinstance(template, dict) else None
+    containers = template_spec.get("containers") if isinstance(template_spec, dict) else None
+    if (
+        not isinstance(containers, list)
+        or len(containers) != 1
+        or not isinstance(containers[0], dict)
+        or not isinstance(containers[0].get("image"), str)
+    ):
+        fail(f"{label} Pod template image is malformed")
+    return cast(str, containers[0]["image"])
+
+
+def verify_application_image_tags(image_tag: str) -> None:
+    expected_images = dict(
+        zip(
+            ("api", "worker", "mock-sink"),
+            kind_runtime.application_images(image_tag),
+            strict=True,
+        )
+    )
+    checked_revisions = 0
+    for component, deployment_name in (
+        ("api", "hooklane-api"),
+        ("worker", "hooklane-worker"),
+        ("mock-sink", MOCK_SINK_DEPLOYMENT),
+    ):
+        selector = (
+            f"app.kubernetes.io/instance={kind_runtime.RELEASE},"
+            f"app.kubernetes.io/component={component}"
+        )
+        deployment = kubectl_json(
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "get",
+            "deployment",
+            deployment_name,
+        )
+        replica_sets = object_items(
+            kubectl_json(
+                "--namespace",
+                kind_runtime.NAMESPACE,
+                "get",
+                "replicasets",
+                "--selector",
+                selector,
+            ),
+            f"{component} ReplicaSet",
+        )
+        expected_image = expected_images[component]
+        resources = [("Deployment", deployment), *[("ReplicaSet", item) for item in replica_sets]]
+        for resource_kind, resource in resources:
+            actual_image = deployment_template_image(
+                resource,
+                f"{component} {resource_kind}",
+            )
+            if actual_image != expected_image:
+                fail(
+                    f"{component} {resource_kind} uses {actual_image}; "
+                    f"expected {expected_image}"
+                )
+            checked_revisions += 1
+    print(f"[ok] {checked_revisions} application Deployment revisions use {image_tag}")
+
+
+def e2e_helm_arguments(image_tag: str, *arguments: str) -> tuple[str, ...]:
+    return (*arguments, *kind_runtime.image_overrides(image_tag))
+
+
+def deploy_e2e_release(image_tag: str | None = None) -> None:
+    resolved_image_tag = image_tag if image_tag is not None else kind_runtime.resolve_image_tag()
     kind_runtime.helm(
-        "upgrade",
-        "--install",
-        kind_runtime.RELEASE,
-        str(kind_runtime.CHART),
-        "--namespace",
-        kind_runtime.NAMESPACE,
-        "--create-namespace",
-        "--set",
-        "observability.enabled=true",
-        "--set",
-        "retry.maximumAttempts=20",
-        "--set",
-        "retry.pendingIdleMilliseconds=1000",
-        "--wait",
-        "--timeout",
-        "240s",
-        "--history-max",
-        "5",
+        *e2e_helm_arguments(
+            resolved_image_tag,
+            "upgrade",
+            "--install",
+            kind_runtime.RELEASE,
+            str(kind_runtime.CHART),
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "--create-namespace",
+            "--set",
+            "observability.enabled=true",
+            "--set",
+            "retry.maximumAttempts=20",
+            "--set",
+            "retry.pendingIdleMilliseconds=1000",
+            "--wait",
+            "--timeout",
+            "240s",
+            "--history-max",
+            "5",
+        ),
     )
     wait_all_workloads()
+    verify_application_image_tags(resolved_image_tag)
 
 
-def configure_sink_helm(mode: str, delay_seconds: int) -> None:
+def configure_sink_helm(
+    mode: str,
+    delay_seconds: int,
+    image_tag: str | None = None,
+) -> None:
+    resolved_image_tag = image_tag if image_tag is not None else kind_runtime.resolve_image_tag()
     kind_runtime.helm(
-        "upgrade",
-        kind_runtime.RELEASE,
-        str(kind_runtime.CHART),
-        "--namespace",
-        kind_runtime.NAMESPACE,
-        "--reuse-values",
-        "--set",
-        f"mockSink.failureMode={mode}",
-        "--set",
-        f"mockSink.delaySeconds={delay_seconds}",
-        "--wait",
-        "--timeout",
-        "180s",
-        "--history-max",
-        "5",
+        *e2e_helm_arguments(
+            resolved_image_tag,
+            "upgrade",
+            kind_runtime.RELEASE,
+            str(kind_runtime.CHART),
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "--reuse-values",
+            "--set",
+            f"mockSink.failureMode={mode}",
+            "--set",
+            f"mockSink.delaySeconds={delay_seconds}",
+            "--wait",
+            "--timeout",
+            "180s",
+            "--history-max",
+            "5",
+        ),
     )
     wait_rollout(f"deployment/{MOCK_SINK_DEPLOYMENT}")
     wait_for_mock_sink_rollout()
+    verify_application_image_tags(resolved_image_tag)
 
 
-def restore_normal_release() -> None:
+def restore_normal_release(image_tag: str | None = None) -> None:
+    resolved_image_tag = image_tag if image_tag is not None else kind_runtime.resolve_image_tag()
     kind_runtime.helm(
-        "upgrade",
-        kind_runtime.RELEASE,
-        str(kind_runtime.CHART),
-        "--namespace",
-        kind_runtime.NAMESPACE,
-        "--set",
-        "observability.enabled=true",
-        "--set",
-        "mockSink.failureMode=accept",
-        "--set",
-        "mockSink.delaySeconds=0",
-        "--set",
-        "retry.maximumAttempts=5",
-        "--set",
-        "retry.pendingIdleMilliseconds=60000",
-        "--wait",
-        "--timeout",
-        "240s",
-        "--history-max",
-        "5",
+        *e2e_helm_arguments(
+            resolved_image_tag,
+            "upgrade",
+            kind_runtime.RELEASE,
+            str(kind_runtime.CHART),
+            "--namespace",
+            kind_runtime.NAMESPACE,
+            "--set",
+            "observability.enabled=true",
+            "--set",
+            "mockSink.failureMode=accept",
+            "--set",
+            "mockSink.delaySeconds=0",
+            "--set",
+            "retry.maximumAttempts=5",
+            "--set",
+            "retry.pendingIdleMilliseconds=60000",
+            "--wait",
+            "--timeout",
+            "240s",
+            "--history-max",
+            "5",
+        ),
     )
     wait_all_workloads()
     wait_for_mock_sink_rollout()
+    verify_application_image_tags(resolved_image_tag)
 
 
 def verify_normal_and_idempotent_delivery() -> list[str]:
@@ -570,12 +660,12 @@ def verify_normal_and_idempotent_delivery() -> list[str]:
     return [normal_id, first_id]
 
 
-def verify_retry_recovery() -> str:
-    configure_sink_helm("server_error", 0)
+def verify_retry_recovery(image_tag: str) -> str:
+    configure_sink_helm("server_error", 0, image_tag)
     event_id = post_event("kind.e2e.retry")
     wait_event_state(event_id, "retry_scheduled", timeout_seconds=45)
     verify_metrics_after_retry()
-    configure_sink_helm("accept", 0)
+    configure_sink_helm("accept", 0, image_tag)
     delivered = wait_event_state(event_id, "delivered", timeout_seconds=120)
     attempt_count = delivered.get("attempt_count")
     if not isinstance(attempt_count, int) or attempt_count < 2:
@@ -627,8 +717,8 @@ def wait_for_no_worker_pods() -> None:
     fail("worker Pod did not stop")
 
 
-def verify_pending_recovery() -> str:
-    configure_sink_helm("delay", 8)
+def verify_pending_recovery(image_tag: str) -> str:
+    configure_sink_helm("delay", 8, image_tag)
     original_worker = worker_pod_name()
     event_id = post_event("kind.e2e.pending-recovery")
     wait_event_state(event_id, "delivering", timeout_seconds=45)
@@ -663,6 +753,7 @@ def verify_pending_recovery() -> str:
     )
     wait_rollout(f"deployment/{MOCK_SINK_DEPLOYMENT}")
     wait_for_mock_sink_rollout()
+    verify_application_image_tags(image_tag)
     run_kubectl(
         "--namespace",
         kind_runtime.NAMESPACE,
@@ -882,9 +973,9 @@ def release_exists() -> bool:
     return result.returncode == 0
 
 
-def run_e2e() -> None:
-    kind_runtime.deploy()
-    deploy_e2e_release()
+def run_e2e(image_tag: str) -> None:
+    kind_runtime.deploy(image_tag)
+    deploy_e2e_release(image_tag)
     kind_runtime.helm_test()
     wait_api_ready()
     with observability_runtime.port_forward(
@@ -898,8 +989,8 @@ def run_e2e() -> None:
         )
         observability_runtime.wait_for_targets()
         event_ids = verify_normal_and_idempotent_delivery()
-        retry_id = verify_retry_recovery()
-        pending_id = verify_pending_recovery()
+        retry_id = verify_retry_recovery(image_tag)
+        pending_id = verify_pending_recovery(image_tag)
         event_ids.extend((retry_id, pending_id))
         verify_final_state(event_ids)
 
@@ -907,10 +998,12 @@ def run_e2e() -> None:
 def main() -> int:
     owned_cluster = kind_runtime.CLUSTER_NAME not in kind_runtime.clusters()
     passed = True
+    image_tag: str | None = None
     try:
+        image_tag = kind_runtime.resolve_image_tag()
         if owned_cluster:
             kind_runtime.cluster_up()
-        run_e2e()
+        run_e2e(image_tag)
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
         passed = False
         detail = str(error) if isinstance(error, RuntimeError) else type(error).__name__
@@ -920,7 +1013,8 @@ def main() -> int:
     finally:
         if kind_runtime.CLUSTER_NAME in kind_runtime.clusters() and release_exists():
             try:
-                restore_normal_release()
+                if image_tag is not None:
+                    restore_normal_release(image_tag)
             except (OSError, RuntimeError, subprocess.CalledProcessError):
                 passed = False
                 print("[fail] kind E2E normal configuration restoration failed")

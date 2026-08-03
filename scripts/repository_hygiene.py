@@ -195,7 +195,7 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         "THIRD_PARTY_NOTICES.md",
         "requirements.lock",
         "GitHub hosted Actions",
-        "v0.1.0のtagとGitHub Releaseは公開済み",
+        "v0.1.1のtagがcurrent source baseline",
     ):
         if marker not in readme:
             fail(f"README release state is missing: {marker}")
@@ -220,7 +220,7 @@ def validate_readme_release_state(files: tuple[Path, ...]) -> None:
         "make observability-smoke",
         "make incident-smoke",
         "make clean-room",
-        "GitHub hosted Actionsは公開mainで実行済み",
+        "GitHub hosted Actionsは公開mainの旧baselineで実行済み",
         "Quality, security, and chart gatesはsuccess",
         "kind delivery and recovery E2Eはsuccess",
         "source-only",

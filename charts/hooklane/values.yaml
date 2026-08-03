@@ -10,6 +10,11 @@ serviceAccount:
 
 config:
   redisURL: redis://hooklane-redis:6379/0
+  downstreamURL: http://hooklane-mock-sink:8080/internal/deliveries
+  redisURLSecret:
+    enabled: false
+    name: ""
+    key: redis-url
 
 retry:
   maximumAttempts: 5
@@ -55,7 +60,7 @@ api:
   replicaCount: 2
   image:
     repository: hooklane-api
-    tag: 0.1.0
+    tag: 0.1.1
     digest: ""
   service:
     type: NodePort
@@ -96,7 +101,7 @@ worker:
   replicaCount: 1
   image:
     repository: hooklane-worker
-    tag: 0.1.0
+    tag: 0.1.1
     digest: ""
   strategy:
     maxUnavailable: 0
@@ -132,7 +137,7 @@ mockSink:
   replicaCount: 1
   image:
     repository: hooklane-mock-sink
-    tag: 0.1.0
+    tag: 0.1.1
     digest: ""
   failureMode: accept
   delaySeconds: 0

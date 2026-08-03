@@ -61,6 +61,207 @@ def validate_kubernetes_schema(rendered: str, label: str) -> None:
         fail(f"kubeconform rejected the {label} render")
 
 
+def validate_redis_secret_boundary() -> None:
+    valid_values = (
+        "redis://redis:6379/0",
+        "rediss://redis.example:6379/0",
+    )
+    for value in valid_values:
+        run_helm(
+            "template",
+            "hooklane",
+            str(CHART),
+            "--namespace",
+            "hooklane",
+            "--kube-version",
+            KUBE_VERSION,
+            "--set-string",
+            f"config.redisURL={value}",
+        )
+
+    marker = "secret-like-value"
+    authority_marker = "@"
+    invalid_values = (
+        f"redis://:password{authority_marker}redis.example:6379/0",
+        f"redis://redis.example:6379/0?token={marker}",
+        "redis://redis.example:6379/0#fragment",
+        "memcached://redis.example:11211/0",
+    )
+    for value in invalid_values:
+        completed = subprocess.run(
+            [
+                "helm",
+                "template",
+                "hooklane",
+                str(CHART),
+                "--namespace",
+                "hooklane",
+                "--kube-version",
+                KUBE_VERSION,
+                "--set-string",
+                f"config.redisURL={value}",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode == 0:
+            fail("Helm accepted an unsafe direct Redis URL")
+        if marker in f"{completed.stdout}\n{completed.stderr}":
+            fail("Helm reflected a credential-like Redis URL value")
+
+    secret_render = run_helm(
+        "template",
+        "hooklane",
+        str(CHART),
+        "--namespace",
+        "hooklane",
+        "--kube-version",
+        KUBE_VERSION,
+        "--set-string",
+        "config.redisURL=redis://redis:6379/0",
+        "--set",
+        "config.redisURLSecret.enabled=true",
+        "--set",
+        "config.redisURLSecret.name=hooklane-runtime",
+        "--set",
+        "config.redisURLSecret.key=redis-url",
+    )
+    for deployment in ("name: hooklane-api", "name: hooklane-worker"):
+        start = secret_render.index(deployment)
+        end = secret_render.find("\n---", start)
+        document = secret_render[start : len(secret_render) if end == -1 else end]
+        if "value: redis://" in document or "password" in document:
+            fail("Secret-enabled Deployment rendered a literal Redis URL")
+
+    empty_secret_render = run_helm(
+        "template",
+        "hooklane",
+        str(CHART),
+        "--namespace",
+        "hooklane",
+        "--kube-version",
+        KUBE_VERSION,
+        "--set-string",
+        "config.redisURL=",
+        "--set",
+        "config.redisURLSecret.enabled=true",
+        "--set",
+        "config.redisURLSecret.name=hooklane-runtime",
+        "--set",
+        "config.redisURLSecret.key=redis-url",
+    )
+    if "secretKeyRef:" not in empty_secret_render:
+        fail("empty Secret-mode Redis placeholder did not render a secret reference")
+
+    for value in (
+        f"redis://:password{authority_marker}redis.example:6379/0",
+        "redis://redis.example:6379/0?token=secret-like-value",
+    ):
+        rejected = subprocess.run(
+            [
+                "helm",
+                "template",
+                "hooklane",
+                str(CHART),
+                "--namespace",
+                "hooklane",
+                "--kube-version",
+                KUBE_VERSION,
+                "--set-string",
+                f"config.redisURL={value}",
+                "--set",
+                "config.redisURLSecret.enabled=true",
+                "--set",
+                "config.redisURLSecret.name=hooklane-runtime",
+                "--set",
+                "config.redisURLSecret.key=redis-url",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if rejected.returncode == 0:
+            fail("Secret-enabled Helm render accepted an unsafe Redis value")
+        if "secret-like-value" in f"{rejected.stdout}\n{rejected.stderr}":
+            fail("Helm reflected a credential-like Redis URL value")
+
+    missing_secret_key = subprocess.run(
+        [
+            "helm",
+            "template",
+            "hooklane",
+            str(CHART),
+            "--namespace",
+            "hooklane",
+            "--kube-version",
+            KUBE_VERSION,
+            "--set",
+            "config.redisURLSecret.enabled=true",
+            "--set",
+            "config.redisURLSecret.name=",
+            "--set",
+            "config.redisURLSecret.key=",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if missing_secret_key.returncode == 0:
+        fail("Secret-enabled Helm render accepted missing name/key")
+
+
+def validate_downstream_boundary() -> None:
+    valid_values = (
+        "http://hooklane-mock-sink:8080/internal/deliveries",
+        "https://controlled.example/hooks",
+    )
+    for value in valid_values:
+        run_helm(
+            "template",
+            "hooklane",
+            str(CHART),
+            "--namespace",
+            "hooklane",
+            "--kube-version",
+            KUBE_VERSION,
+            "--set-string",
+            f"config.downstreamURL={value}",
+        )
+
+    marker = "secret-like-value"
+    invalid_values = (
+        f"https://user:{marker}@controlled.example/hooks",
+        "https://controlled.example/hooks" + "?token=fixture",
+        "https://controlled.example/hooks#fragment",
+        "https://controlled.example/internal path",
+        "https://controlled.example:not-a-port/hooks",
+        "ftp://controlled.example/hooks",
+    )
+    for value in invalid_values:
+        rejected = subprocess.run(
+            [
+                "helm",
+                "template",
+                "hooklane",
+                str(CHART),
+                "--namespace",
+                "hooklane",
+                "--kube-version",
+                KUBE_VERSION,
+                "--set-string",
+                f"config.downstreamURL={value}",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if rejected.returncode == 0:
+            fail("Helm accepted an unsafe downstream URL")
+        if marker in f"{rejected.stdout}\n{rejected.stderr}":
+            fail("Helm reflected a credential-like downstream URL value")
+
+
 def validate_render_contract(rendered: str, label: str) -> dict[tuple[str, str], str]:
     validate_kubernetes_schema(rendered, label)
     resources = rendered_resources(rendered)
@@ -80,6 +281,8 @@ def validate_render_contract(rendered: str, label: str) -> dict[tuple[str, str],
 
 def main() -> int:
     validate_base()
+    validate_redis_secret_boundary()
+    validate_downstream_boundary()
     rendered = run_helm(
         "template",
         "hooklane",
@@ -90,6 +293,9 @@ def main() -> int:
         KUBE_VERSION,
     )
     resources = validate_render_contract(rendered, "default")
+    configmap = resources[("ConfigMap", "hooklane-config")]
+    if "HOOKLANE_REDIS_URL:" in configmap:
+        fail("default ConfigMap must not contain HOOKLANE_REDIS_URL")
     workload_keys = (
         ("Deployment", "hooklane-api"),
         ("Deployment", "hooklane-worker"),
@@ -160,6 +366,35 @@ def main() -> int:
 
     if OBSERVABILITY_RESOURCES & set(resources):
         fail("observability resources rendered while disabled")
+
+    secret_render = run_helm(
+        "template",
+        "hooklane",
+        str(CHART),
+        "--namespace",
+        "hooklane",
+        "--kube-version",
+        KUBE_VERSION,
+        "--set",
+        "config.redisURLSecret.enabled=true",
+        "--set",
+        "config.redisURLSecret.name=hooklane-runtime",
+        "--set",
+        "config.redisURLSecret.key=redis-url",
+    )
+    secret_resources = validate_render_contract(secret_render, "secret-injection")
+    for key in (("Deployment", "hooklane-api"), ("Deployment", "hooklane-worker")):
+        require(
+            secret_resources[key],
+            key,
+            "name: HOOKLANE_REDIS_URL",
+            "secretKeyRef:",
+            "name: hooklane-runtime",
+            "key: redis-url",
+        )
+    if "HOOKLANE_REDIS_URL:" in secret_resources[("ConfigMap", "hooklane-config")]:
+        fail("Secret injection render must not put HOOKLANE_REDIS_URL in ConfigMap")
+
     enabled_render = run_helm(
         "template",
         "hooklane",

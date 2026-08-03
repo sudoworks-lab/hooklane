@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 from typing import Never
@@ -15,6 +16,8 @@ README = ROOT / "README.md"
 DEMO = ROOT / "docs" / "DEMO.md"
 DEVELOPMENT = ROOT / "docs" / "DEVELOPMENT.md"
 RELEASE_EVIDENCE = ROOT / "docs" / "RELEASE_EVIDENCE.md"
+AWS_RUNTIME_EVIDENCE = ROOT / "docs" / "aws" / "runtime-evidence.json"
+F004_MIGRATION_ADR = ROOT / "docs" / "adr" / "0004-f004-destination-contract-migration.md"
 RELEASE_NOTES = ROOT / "docs" / "releases" / "v0.1.1.md"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 LICENSE = ROOT / "LICENSE"
@@ -189,7 +192,7 @@ def validate_readme_contract() -> None:
         "make verify",
         "make clean-room",
         "GitHub hosted Actions",
-        "v0.1.0のtagとGitHub Releaseは公開済み",
+        "v0.1.1のtagがcurrent source baseline",
         "MIT License",
         "source-only",
         "prebuilt container image",
@@ -253,7 +256,7 @@ def validate_release_evidence_contract() -> None:
         "Gitleaks",
         "OSV-Scanner",
         "Trivy",
-        "GitHub hosted Actionsは公開mainで実行済み",
+        "GitHub hosted Actionsは公開mainの旧baselineで実行済み",
         "Quality, security, and chart gatesはsuccess",
         "kind delivery and recovery E2Eはsuccess",
         "source-only",
@@ -266,11 +269,218 @@ def validate_release_evidence_contract() -> None:
         fail("release evidence disagrees with feature state")
 
 
+def validate_current_aws_evidence_contract() -> None:
+    if not AWS_RUNTIME_EVIDENCE.is_file():
+        fail("sanitized AWS runtime evidence is missing")
+    try:
+        evidence: object = json.loads(AWS_RUNTIME_EVIDENCE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        fail("sanitized AWS runtime evidence is not valid JSON")
+    if not isinstance(evidence, dict):
+        fail("sanitized AWS runtime evidence must be a JSON object")
+    required = (
+        "schema_version",
+        "run_id",
+        "source_run_id",
+        "cleanup_recovery_run_id",
+        "source_commit",
+        "image_source_commit",
+        "image_tag",
+        "verdict",
+        "iteration",
+        "image_digests",
+        "region",
+        "foundation_plan",
+        "foundation_apply",
+        "foundation_readiness",
+        "runtime_plan",
+        "runtime_apply",
+        "runtime_health",
+        "scenario_outcomes",
+        "image_proof_mode",
+        "cleanup_plan",
+        "cleanup_completion",
+        "final_state",
+        "retained_resources",
+        "verified",
+        "unverified",
+        "evidence_sources",
+        "secret_free",
+    )
+    for key in required:
+        if key not in evidence:
+            fail(f"sanitized AWS runtime evidence is missing: {key}")
+    if evidence.get("schema_version") != "1.1":
+        fail("sanitized AWS runtime evidence schema version is unexpected")
+    if evidence.get("secret_free") is not True:
+        fail("sanitized AWS runtime evidence must declare secret_free=true")
+    if evidence.get("run_id") != "20260802T160316Z":
+        fail("sanitized AWS runtime evidence run ID is unexpected")
+    if evidence.get("source_run_id") != "20260802T154822Z":
+        fail("sanitized AWS runtime evidence source run ID is unexpected")
+    if evidence.get("cleanup_recovery_run_id") != "20260802T160316Z":
+        fail("sanitized AWS runtime evidence cleanup recovery run ID is unexpected")
+    if evidence.get("source_commit") != "123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b":
+        fail("sanitized AWS runtime evidence source commit is unexpected")
+    if evidence.get("image_source_commit") != "123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b":
+        fail("sanitized AWS runtime evidence image source commit is unexpected")
+    if evidence.get("image_tag") != "git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b":
+        fail("sanitized AWS runtime evidence image tag is unexpected")
+    if evidence.get("verdict") != "PASS_AND_CLEAN":
+        fail("sanitized AWS runtime evidence verdict is unexpected")
+    if evidence.get("iteration") != 2:
+        fail("sanitized AWS runtime evidence iteration is unexpected")
+    if evidence.get("foundation_plan") != {"create": 49, "update": 0, "delete": 0}:
+        fail("sanitized AWS runtime evidence has an unexpected foundation plan")
+    if evidence.get("foundation_apply") != "PASS" or evidence.get("foundation_readiness") != "PASS":
+        fail("sanitized AWS runtime evidence foundation result is unexpected")
+    runtime_plan = evidence.get("runtime_plan")
+    cleanup_plan = evidence.get("cleanup_plan")
+    if runtime_plan != {"create": 0, "update": 3, "delete": 0}:
+        fail("sanitized AWS runtime evidence has an unexpected runtime plan")
+    if evidence.get("runtime_apply") != "PASS" or evidence.get("runtime_health") != "PASS":
+        fail("sanitized AWS runtime evidence runtime result is unexpected")
+    if cleanup_plan != {"create": 0, "update": 0, "delete": 49}:
+        fail("sanitized AWS runtime evidence has an unexpected cleanup plan")
+    scenario = evidence.get("scenario_outcomes")
+    if not isinstance(scenario, dict) or any(
+        scenario.get(key) is not True
+        for key in ("normal_delivery", "idempotency_same", "idempotency_conflict", "smoke_contract")
+    ) or scenario.get("smoke_checks") != 4 or scenario.get("smoke_passed") != 4:
+        fail("sanitized AWS runtime evidence smoke result is unexpected")
+    if evidence.get("image_proof_mode") != {
+        "api": "configuration_backed",
+        "worker": "configuration_backed",
+        "mock_sink": "direct_plan",
+    }:
+        fail("sanitized AWS runtime evidence image proof mode is unexpected")
+    final_state = evidence.get("final_state")
+    if not isinstance(final_state, dict) or final_state.get("resource_count") != 6:
+        fail("sanitized AWS runtime evidence final state count is unexpected")
+    if final_state.get("resource_classes") != {
+        "ECR repository": 3,
+        "ECR lifecycle policy": 3,
+    }:
+        fail("sanitized AWS runtime evidence resource classes are unexpected")
+    if final_state.get("charge_heavy_resource_count") != 0:
+        fail("sanitized AWS runtime evidence charge-heavy count is unexpected")
+    if final_state.get("required_images") != 3:
+        fail("sanitized AWS runtime evidence required image count is unexpected")
+    if final_state.get("ecr_digest_match") is not True:
+        fail("sanitized AWS runtime evidence ECR digest match is unexpected")
+    if final_state.get("ecr_contract_match") is not True:
+        fail("sanitized AWS runtime evidence ECR contract match is unexpected")
+    if (
+        final_state.get("ecs_service_count") != 0
+        or final_state.get("ecs_running_task_count") != 0
+        or final_state.get("ecs_pending_task_count") != 0
+        or final_state.get("ecs_cluster_state") != "inactive_tombstone"
+        or final_state.get("ecs_inactive_tombstone_count") != 1
+    ):
+        fail("sanitized AWS runtime evidence ECS final state is unexpected")
+    if final_state.get("apply_process") != "terminated":
+        fail("sanitized AWS runtime evidence apply process is unexpected")
+    if evidence.get("cleanup_completion") != "PASS":
+        fail("sanitized AWS runtime evidence cleanup completion is unexpected")
+    sources = evidence.get("evidence_sources")
+    expected_sources = {
+        "main_run_receipt_sha256": "cf8d5090f5635e7e7b957f41d65658c3bc6b8ba215781961e4436f46ed06516b",
+        "main_run_progress_sha256": "bb6626a6da4909fd121515afb791e86d0394b12390aece13f3bedf0b5768fd0d",
+        "main_run_diagnostic_sha256": "b4f806f33461cbe453d79c871c211601f2b5c760b4bd42de1fdae0027f7a08cc",
+        "recovery_run_receipt_sha256": "a1aa6f342f6b052525feba59afc6bef961b11b58b82804a37f6e34c3d305922e",
+        "recovery_run_progress_sha256": "c183352ccb0e47579ae143d5932e6c7be7100b670e59fe470fd853e31493a746",
+        "recovery_run_diagnostic_sha256": "27b8d08b4c13af84090b7927d2d86a8fc6acce243e6bf7e4153827aadedaa4bd",
+        "canonical_evidence_sha256": "3d1d6a11d9c64d2272ee2cdfc5027c007300c5dc4ff8cd4c5b229fcb1dd56085",
+        "canonical_manifest_sha256": "5ab00c7df3cfef2e1e1fa43982eb09af76a44508e337858978b8ff953d6a74bd",
+    }
+    if not isinstance(sources, dict) or any(sources.get(key) != value for key, value in expected_sources.items()):
+        fail("sanitized AWS runtime evidence artifact SHA provenance is unexpected")
+
+    current_state_documents = (
+        README,
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "SECURITY.md",
+        ROOT / "docs" / "LIMITATIONS.md",
+        RELEASE_EVIDENCE,
+        ROOT / "infra" / "README.md",
+    )
+    scope_markers = (
+        "123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b",
+        "git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b",
+        "20260802T160316Z",
+        "PASS_AND_CLEAN",
+        "foundation 49/0/0",
+        "runtime 0/3/0",
+        "cleanup 0/0/49",
+        "smoke 4/4",
+        "image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`",
+        "configuration_backed",
+        "direct_plan",
+        "final state 6",
+        "charge-heavy 0",
+        "ECR repository 3",
+        "ECS service/task 0",
+        "INACTIVE tombstone",
+        "apply process terminated",
+    )
+    for document in current_state_documents:
+        text = document.read_text(encoding="utf-8")
+        for marker in scope_markers:
+            if marker not in text:
+                fail(
+                    "current-state documentation is missing AWS evidence scope: "
+                    f"{document.relative_to(ROOT)}"
+                )
+    github_scope_documents = (
+        README,
+        ROOT / "infra" / "README.md",
+        ROOT / "docs" / "ARCHITECTURE.md",
+        ROOT / "docs" / "LIMITATIONS.md",
+        RELEASE_EVIDENCE,
+    )
+    for document in github_scope_documents:
+        text = document.read_text(encoding="utf-8")
+        if "公開mainの旧baseline" not in text or "Push後のPR CI" not in text:
+            fail(
+                "current-state documentation is missing hosted-CI generation scope: "
+                f"{document.relative_to(ROOT)}"
+            )
+    if not F004_MIGRATION_ADR.is_file():
+        fail("F004 contract migration ADR is missing")
+    migration = F004_MIGRATION_ADR.read_text(encoding="utf-8")
+    for marker in (
+        "Human Decision",
+        "DELIVERY_TARGET_ALLOWLIST",
+        "operator-controlledなstartup configuration",
+        "requestから配送先を変更できない",
+        "features.json",
+        "恒久的な自動編集権限の緩和は行わない",
+    ):
+        if marker not in migration:
+            fail(f"F004 migration ADR is missing: {marker}")
+    stale_claims = (
+        "修正後のAWS runtimeは未実証",
+        "runtime AWS apply、ECS task secret injectionの実行",
+        "runtime applyは実行していない",
+        "runtimeのhealthy delivery verificationはworker health failureにより未完了",
+        "現在HEADおよび新immutable imageはAWS再検証前",
+        "現在HEADのAWS実証とは扱わない",
+    )
+    for document in current_state_documents:
+        text = document.read_text(encoding="utf-8")
+        for claim in stale_claims:
+            if claim in text:
+                fail(
+                    "current-state documentation retains a stale AWS failure claim: "
+                    f"{document.relative_to(ROOT)}"
+                )
+
+
 def validate_metadata_contract() -> None:
     project = PYPROJECT.read_text(encoding="utf-8")
     chart = CHART.read_text(encoding="utf-8")
-    if 'version = "0.1.0"' not in project:
-        fail("package version differs from the approved v0.1.0 baseline")
+    if 'version = "0.1.1"' not in project:
+        fail("package version differs from the current v0.1.1 baseline")
     if 'description = "Webhook delivery service with retry, recovery, and observability"' not in project:
         fail("package description is missing or stale")
     if "description: Webhook delivery service chart" not in chart:
@@ -354,6 +564,7 @@ def run_checks() -> None:
     validate_readme_contract()
     validate_demo_contract()
     validate_release_evidence_contract()
+    validate_current_aws_evidence_contract()
     validate_metadata_contract()
     validate_license_and_notices_contract()
     validate_public_claims()

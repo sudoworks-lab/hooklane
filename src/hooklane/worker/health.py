@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from hooklane.runtime_config import redis_config_from_environment
 
-DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 GROUP_NAME = "hooklane-workers"
 STREAM_NAME = "hooklane:events"
 
@@ -19,7 +18,7 @@ async def check(mode: str) -> bool:
     if mode == "live":
         return True
     client = Redis.from_url(
-        os.environ.get("HOOKLANE_REDIS_URL", DEFAULT_REDIS_URL),
+        redis_config_from_environment().value,
         decode_responses=True,
         socket_connect_timeout=1,
         socket_timeout=1,

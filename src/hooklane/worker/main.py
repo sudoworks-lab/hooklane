@@ -22,7 +22,6 @@ from hooklane.worker.runtime import WorkerRuntime
 from hooklane.worker.service import EventWorker, WorkerResult
 
 
-DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 IDLE_POLL_SECONDS = 0.1
 DEFAULT_METRICS_PORT = 9090
 
@@ -62,8 +61,7 @@ async def run_worker() -> int:
     settings = load_worker_settings(os.environ)
     metrics = HooklaneMetrics("worker")
     logger = StructuredLogger("worker")
-    store = RedisEventStore.from_url(
-        os.environ.get("HOOKLANE_REDIS_URL", DEFAULT_REDIS_URL),
+    store = RedisEventStore.from_environment(
         metrics=metrics,
         logger=logger,
     )

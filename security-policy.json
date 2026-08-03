@@ -19,9 +19,9 @@
       "fail_severities": ["HIGH", "CRITICAL"],
       "filesystem_pattern": "pip:requirements\\.lock",
       "images": [
-        "hooklane-api:0.1.0",
-        "hooklane-worker:0.1.0",
-        "hooklane-mock-sink:0.1.0"
+        "hooklane-api",
+        "hooklane-worker",
+        "hooklane-mock-sink"
       ]
     }
   },

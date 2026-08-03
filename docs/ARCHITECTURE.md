@@ -22,7 +22,7 @@ API / worker / mock sink -- /metrics --> Prometheus --> Grafana / alert rules
 | API | request validation、idempotency判定、atomic enqueue、status参照、health、metrics | downstream配送、retry実行 |
 | Redis Streams | event queue、consumer-group pending、event status、retry schedule、dead-letterの状態保持 | HA、automatic failover、business-level deduplication |
 | worker | stream消費、配送、retry／dead-letter判定、pending claim、graceful drain | HTTP受付、exactly-once保証 |
-| mock sink | 配送確認と安全な障害注入 | 実在する外部serviceの再現 |
+| mock sink / controlled downstream | 配送確認と安全な障害注入、設定可能な配送先境界 | 実在する外部serviceの本番互換性 |
 | Prometheus / Grafana | application metricsのscrape、SLI dashboard、alert評価 | 長期SLO実績、通知routing、on-call |
 
 実装は[`src/hooklane`](../src/hooklane)、Docker Compose構成は[`compose.yaml`](../compose.yaml)、Kubernetes構成は[`charts/hooklane`](../charts/hooklane/Chart.yaml)にある。
@@ -32,9 +32,9 @@ API / worker / mock sink -- /metrics --> Prometheus --> Grafana / alert rules
 1. clientが`POST /v1/events`へJSON requestと`Idempotency-Key`を送る
 2. APIがschemaとidempotency contractを検証し、新規requestへUUID event IDを割り当てる
 3. APIがevent、初期status、idempotency mappingをRedis上で原子的に作成する。永続化できた場合だけ`202 Accepted`を返す
-4. workerがconsumer groupからeventを取得し、statusを`delivering`へ遷移させ、event IDをreceipt keyとしてmock sinkへ配送する
+4. workerがconsumer groupからeventを取得し、statusを`delivering`へ遷移させ、event IDをreceipt keyとして設定済みdownstreamへ配送する。既定先はmock sinkである
 5. 成功時はstatusを`delivered`へ更新してstream messageをackする。retryable failureはretry scheduleへ移し、policy上限またはnon-retryable failureは`dead_letter`へ終端する
-6. `GET /v1/events/{event_id}`はstatus、attempt count、timestampを返す。payload本文はresponseへ再掲しない
+6. `GET /v1/events/{event_id}`はstatusとattempt countを返す。timestampとpayload本文はresponseへ含めない
 
 enqueueの実装は[`queue/events.py`](../src/hooklane/queue/events.py)、配送policyは[`worker/service.py`](../src/hooklane/worker/service.py)と[`delivery/sink.py`](../src/hooklane/delivery/sink.py)を正本とする。
 
@@ -54,7 +54,7 @@ idempotencyはAPI受付の重複抑止であり、worker配送のexactly-once保
 
 配送保証はat-least-once。workerがdownstream side effect後かつRedis ack前に停止すると、同じevent IDを再配送し得る。downstreamはevent IDを重複排除キーとして扱い、同じIDのside effectを一度だけ適用する責務を持つ。この判断は[ADR 0001](adr/0001-redis-streams-at-least-once.md)に記録する。
 
-timeout、connection failure、HTTP 429、HTTP 5xxはretryableとし、bounded exponential backoffとjitterを使う。HTTP 4xxはnon-retryable。retry policyの上限を超えたeventはdead-letterへ移す。arbitrary exception messageは外部responseやstructured logへ流さず、有限集合の`reason_code`へ分類する。
+timeout、connection failure、HTTP 429、HTTP 5xxはretryableとし、bounded exponential backoffとjitterを使う。HTTP 3xxとその他のHTTP 4xxはexplicit failureとしてnon-retryable。HTTP 2xxだけをdelivery successとし、redirectを自動追跡して成功扱いにはしない。retry policyの上限を超えたeventはdead-letterへ移す。arbitrary exception messageは外部responseやstructured logへ流さず、有限集合の`reason_code`へ分類する。
 
 ## pending message回収
 
@@ -83,6 +83,10 @@ Kubernetesはreadinessに成功したAPI PodだけをService endpointへ加え�
 
 local image buildとkind loadだけを使い、external registryへpushしない。検証境界は[ADR 0003](adr/0003-local-kind-observability.md)に記録する。
 
+### AWS Terraform foundation
+
+[`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。未確認事項は[制約](LIMITATIONS.md)と[sanitized AWS evidence](aws/runtime-evidence.json)に固定する。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義する。
+
 ## observability
 
 API、worker、mock sinkは共通contractのJSON structured logを出力する。correlationにはrequest IDまたはevent IDを使うが、payload、`Idempotency-Key`生値、credential、Redis connection情報、cookie、stack traceを記録しない。
@@ -98,15 +102,15 @@ application metricsは`hooklane_` prefixと有限label集合を使う。event ID
 
 [`ci.yml`](../.github/workflows/ci.yml)には`quality`と`e2e-kind`の2 jobがある。quality jobは`make verify`を呼び、kind jobはそのsuccess後に`make e2e-kind`を呼ぶ。workflowはread-only repository permission、full commit SHAで固定したaction、secretを必要としないpull request triggerを使う。
 
-GitHub hosted Actionsではquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。Hosted CIは公開mainの自動検証であり、cloud productionや本番trafficの実績ではない。
+GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。現在branchはPush後のPR CIで確認する。Hosted CIはcloud productionや本番trafficの実績ではない。
 
 ## trust boundary
 
 主なboundaryはclientからAPI、workerからdownstream、PodからRedis、Prometheusからapplication metrics。
 
 - client inputは信頼せずAPI schemaで検証する。authenticationとtenant authorizationは実装しない
-- downstream destinationは固定allowlistを使い、request由来のarbitrary URLへ配送しない
-- Redis connection情報はSecretから注入できるが、log、metric、diagnosticsへ出さない
+- downstream destinationは`HOOKLANE_DOWNSTREAM_URL`でoperatorが起動時に設定し、request由来のarbitrary URLへ配送しない。未指定時は既存mock sink endpointを使う。requestごとの宛先選択を行わず、startup configurationをoperator-controlled boundaryとして扱う。このF004 contract migrationは[ADR 0004](adr/0004-f004-destination-contract-migration.md)に記録する
+- Redis connection情報はKubernetes Secretの`secretKeyRef`またはTerraformで定義するSecrets Managerからtaskへ注入できる。`redis://`と`rediss://`を扱い、ConfigMap、log、metric、diagnosticsへRedis URLを出さない
 - PrometheusのServiceAccount tokenはautomatic mountを無効にし、namespace内Pod discoveryに必要なshort-lived projected tokenとread-only Roleだけを与える
 - Grafanaのanonymous Viewerはcluster-localに限定し、外部公開portを持たない
 

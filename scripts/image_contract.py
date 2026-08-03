@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -16,6 +18,8 @@ BASE_DIGEST = (
     "python:3.12-alpine3.23@sha256:"
     "601d3d3797e90e2534782e69c85fafb7971b43f24c7b1b079b7e48dd435e458d"
 )
+DEFAULT_IMAGE_TAG = "0.1.1"
+IMAGE_TAG_PATTERN = re.compile(r"(?:0\.1\.1|git-[0-9a-f]{40})\Z")
 
 
 class ImageExpectation(TypedDict):
@@ -24,22 +28,22 @@ class ImageExpectation(TypedDict):
     module: str
 
 
-IMAGES: dict[str, ImageExpectation] = {
-    "api": {
-        "name": "hooklane-api:0.1.0",
-        "entrypoint": ["uvicorn"],
-        "module": "hooklane.api.app",
-    },
-    "worker": {
-        "name": "hooklane-worker:0.1.0",
-        "entrypoint": ["python", "-m", "hooklane.worker.main"],
-        "module": "hooklane.worker.main",
-    },
-    "mock-sink": {
-        "name": "hooklane-mock-sink:0.1.0",
-        "entrypoint": ["uvicorn"],
-        "module": "hooklane.mock_sink.app",
-    },
+IMAGE_ROLES: dict[str, tuple[str, list[str], str]] = {
+    "api": (
+        "hooklane-api",
+        ["uvicorn"],
+        "hooklane.api.app",
+    ),
+    "worker": (
+        "hooklane-worker",
+        ["python", "-m", "hooklane.worker.main"],
+        "hooklane.worker.main",
+    ),
+    "mock-sink": (
+        "hooklane-mock-sink",
+        ["uvicorn"],
+        "hooklane.mock_sink.app",
+    ),
 }
 OBSERVABILITY_IMAGES = {
     "prometheus": {
@@ -69,20 +73,49 @@ def fail(message: str) -> Never:
     raise RuntimeError(message)
 
 
-def inspect_image(name: str) -> dict[str, Any]:
-    completed = subprocess.run(
-        ["docker", "image", "inspect", name],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def resolve_image_tag(value: str | None = None) -> str:
+    candidate = os.environ.get("IMAGE_TAG", DEFAULT_IMAGE_TAG) if value is None else value
+    if not IMAGE_TAG_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "IMAGE_TAG must be exactly 0.1.1 or git-<40 lowercase hexadecimal characters>"
+        )
+    return candidate
+
+
+def application_images(image_tag: str) -> tuple[str, ...]:
+    tag = resolve_image_tag(image_tag)
+    return tuple(f"{name}:{tag}" for name, _entrypoint, _module in IMAGE_ROLES.values())
+
+
+def inspect_image(name: str, description: str) -> dict[str, Any]:
+    try:
+        completed = subprocess.run(
+            ["docker", "image", "inspect", name],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        fail(f"{description} image is not available locally")
     result: object = json.loads(completed.stdout)
     if not isinstance(result, list) or len(result) != 1:
-        fail(f"unexpected inspect result for {name}")
+        fail(f"{description} image inspect returned an unexpected result")
     image = result[0]
     if not isinstance(image, dict):
-        fail(f"invalid inspect result for {name}")
+        fail(f"{description} image inspect returned an invalid result")
     return cast(dict[str, Any], image)
+
+
+def image_expectations(image_tag: str) -> dict[str, ImageExpectation]:
+    images = dict(zip(IMAGE_ROLES, application_images(image_tag), strict=True))
+    return {
+        role: {
+            "name": images[role],
+            "entrypoint": entrypoint,
+            "module": module,
+        }
+        for role, (_, entrypoint, module) in IMAGE_ROLES.items()
+    }
 
 
 def verify_files() -> None:
@@ -220,7 +253,7 @@ def verify_observability_images() -> None:
         reference = expected["reference"]
         digest = expected["digest"]
         version = expected["version"]
-        image = inspect_image(reference)
+        image = inspect_image(reference, service)
         config = cast(dict[str, Any], image.get("Config"))
         if config.get("User") != expected["user"]:
             fail(f"{service} image does not declare the approved non-root user")
@@ -240,13 +273,21 @@ def verify_observability_images() -> None:
         print(f"[ok] {service}: exact version, digest, and non-root image user passed")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image-tag", default=None)
+    return parser.parse_args()
+
+
 def main() -> int:
+    image_tag = resolve_image_tag(parse_args().image_tag)
+    images = image_expectations(image_tag)
     verify_files()
-    for role, expected in IMAGES.items():
+    for role, expected in images.items():
         name = expected["name"]
         if not isinstance(name, str) or name.endswith(":latest"):
             fail(f"{role} image tag is not fixed")
-        image = inspect_image(name)
+        image = inspect_image(name, role)
         config_object = image.get("Config")
         if not isinstance(config_object, dict):
             fail(f"{name} has no image configuration")
@@ -259,7 +300,7 @@ def main() -> int:
         if not isinstance(labels_object, dict):
             fail(f"{name} labels are invalid")
         labels = cast(dict[str, Any], labels_object)
-        if labels.get("org.opencontainers.image.version") != "0.1.0":
+        if labels.get("org.opencontainers.image.version") != "0.1.1":
             fail(f"{name} has no fixed version label")
         if labels.get("io.hooklane.role") != role:
             fail(f"{name} role label does not match")
@@ -274,6 +315,12 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        subprocess.CalledProcessError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"[fail] image contract: {exc}", file=sys.stderr)
         raise SystemExit(1) from None

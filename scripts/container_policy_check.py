@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -12,15 +13,31 @@ from typing import Any, Never, cast
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APPLICATION_IMAGES = (
-    "hooklane-api:0.1.0",
-    "hooklane-worker:0.1.0",
-    "hooklane-mock-sink:0.1.0",
+DEFAULT_IMAGE_TAG = "0.1.1"
+IMAGE_TAG_PATTERN = re.compile(r"(?:0\.1\.1|git-[0-9a-f]{40})\Z")
+APPLICATION_IMAGE_NAMES = (
+    "hooklane-api",
+    "hooklane-worker",
+    "hooklane-mock-sink",
 )
 
 
 def fail(message: str) -> Never:
     raise RuntimeError(message)
+
+
+def resolve_image_tag(value: str | None = None) -> str:
+    candidate = os.environ.get("IMAGE_TAG", DEFAULT_IMAGE_TAG) if value is None else value
+    if not IMAGE_TAG_PATTERN.fullmatch(candidate):
+        raise ValueError(
+            "IMAGE_TAG must be exactly 0.1.1 or git-<40 lowercase hexadecimal characters>"
+        )
+    return candidate
+
+
+def application_images(image_tag: str) -> tuple[str, ...]:
+    tag = resolve_image_tag(image_tag)
+    return tuple(f"{name}:{tag}" for name in APPLICATION_IMAGE_NAMES)
 
 
 def load_policy() -> dict[str, Any]:
@@ -56,9 +73,12 @@ def verify_policy_document(policy: dict[str, Any]) -> None:
         if not isinstance(entry, dict):
             fail(f"{name} policy must be an object")
         service_entries[name] = cast(dict[str, Any], entry)
-    for service in ("api", "worker", "mock-sink"):
+    expected_application_images = dict(
+        zip(("api", "worker", "mock-sink"), APPLICATION_IMAGE_NAMES, strict=True)
+    )
+    for service, expected_image in expected_application_images.items():
         image = service_entries[service].get("image")
-        if not isinstance(image, str) or ":0.1.0" not in image or image.endswith(":latest"):
+        if image != expected_image:
             fail(f"{service} image is not fixed")
     redis_image = service_entries["redis"].get("image")
     if not isinstance(redis_image, str) or "@sha256:" not in redis_image:
@@ -99,29 +119,35 @@ def verify_policy_document(policy: dict[str, Any]) -> None:
         fail("all current or planned policy exceptions must be explained")
 
 
-def verify_application_images() -> None:
-    for image_name in APPLICATION_IMAGES:
-        completed = subprocess.run(
-            ["docker", "image", "inspect", image_name],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+def verify_application_images(images: tuple[str, ...]) -> None:
+    for role, image_name in zip(APPLICATION_IMAGE_NAMES, images, strict=True):
+        try:
+            completed = subprocess.run(
+                ["docker", "image", "inspect", image_name],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError:
+            fail(f"{role} image is not available locally")
         inspected = json.loads(completed.stdout)
         config = inspected[0]["Config"]
         if config.get("User") != "10001:10001":
-            fail(f"{image_name} is not configured as non-root")
+            fail(f"{role} image is not configured as non-root")
         if image_name.endswith(":latest"):
-            fail(f"{image_name} is not fixed")
+            fail(f"{role} image is not fixed")
 
 
-def compose_config() -> dict[str, Any]:
+def compose_config(image_tag: str) -> dict[str, Any]:
+    environment = os.environ.copy()
+    environment["IMAGE_TAG"] = image_tag
     completed = subprocess.run(
         ["docker", "compose", "config", "--format", "json"],
         cwd=ROOT,
         check=True,
         capture_output=True,
         text=True,
+        env=environment,
     )
     data: object = json.loads(completed.stdout)
     if not isinstance(data, dict):
@@ -129,8 +155,7 @@ def compose_config() -> dict[str, Any]:
     return cast(dict[str, Any], data)
 
 
-def verify_compose() -> None:
-    config = compose_config()
+def verify_compose(config: dict[str, Any], images: tuple[str, ...]) -> None:
     services_object = config.get("services")
     if not isinstance(services_object, dict):
         fail("Compose services must be an object")
@@ -174,7 +199,7 @@ def verify_compose() -> None:
     worker_image = cast(dict[str, Any], services["worker"])["image"]
     sink_image = cast(dict[str, Any], services["mock-sink"])["image"]
     redis_service = cast(dict[str, Any], services["redis"])
-    if (api_image, worker_image, sink_image) != APPLICATION_IMAGES:
+    if (api_image, worker_image, sink_image) != images:
         fail("Compose application image tags do not match the image contract")
     redis_image = redis_service.get("image")
     if not isinstance(redis_image, str) or "redis:8.0.1-alpine@sha256:" not in redis_image:
@@ -375,15 +400,18 @@ def parse_args() -> argparse.Namespace:
         default="image",
         choices=("image", "compose", "helm", "observability"),
     )
+    parser.add_argument("--image-tag", default=None)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    image_tag = resolve_image_tag(args.image_tag)
+    images = application_images(image_tag)
     policy = load_policy()
     verify_policy_document(policy)
     if args.target == "compose":
-        verify_compose()
+        verify_compose(compose_config(image_tag), images)
         print("[ok] Compose four-service runtime hardening policy passed")
         return 0
     if args.target == "helm":
@@ -394,7 +422,7 @@ def main() -> int:
         verify_observability(policy)
         print("[ok] Prometheus and Grafana runtime hardening policy passed")
         return 0
-    verify_application_images()
+    verify_application_images(images)
     print("[ok] current and planned container hardening policy passed")
     return 0
 
@@ -402,6 +430,12 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        subprocess.CalledProcessError,
+        json.JSONDecodeError,
+    ) as exc:
         print(f"[fail] container policy: {exc}", file=sys.stderr)
         raise SystemExit(1) from None

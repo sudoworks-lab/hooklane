@@ -14,6 +14,8 @@
 
 `make verify`はsyntax／configuration check、Ruff、strict mypy、unit／integration test、security scan、Helm／Kubernetes validation、文書contractを集約する。全ての構成commandがsuccessであることを受け入れ条件とする。
 
+`make terraform-validate`はTerraform foundationのresource、security group、secret output、cost default、rollback contractをcredential-freeで検証する。通常のlocal環境でTerraform CLIがない場合は`[degraded]`と表示し、CIではTerraform 1.15.5を公式checksum検証付きで導入したうえでCLI検証を必須にする。AWS APIには接続しない。
+
 ## runtime検証
 
 ### Compose
@@ -40,15 +42,19 @@
 
 `make clean-room`はtracked Git candidateからhardlinkなしの一時cloneを作り、initialization、dependency setup、verify、Compose、kind E2E、rollout、observability、incident、documentation、diff、cleanup contractを実行する。
 
+## AWS evidence scope
+
+source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。receipt SHA-256は`a1aa6f342f6b052525feba59afc6bef961b11b58b82804a37f6e34c3d305922e`、diagnostic SHA-256は`27b8d08b4c13af84090b7927d2d86a8fc6acce243e6bf7e4153827aadedaa4bd`である。
+
 ## GitHub Actions
 
-- GitHub hosted Actionsは公開mainで実行済み
+- GitHub hosted Actionsは公開mainの旧baselineで実行済み。現在branchはPush後のPR CIで確認する
 - Quality, security, and chart gatesはsuccess
 - kind delivery and recovery E2Eはsuccess
 - success時のfailure diagnostics uploadはskip、cleanupはsuccess
 - Node.js 20 deprecation annotationは現行workflowで発生していない
 
-Hosted CIは現在の公開mainに対する自動検証であり、cloud productionや本番trafficの実績ではない。
+Hosted CIは公開mainの旧baselineに対する自動検証であり、cloud productionや本番trafficの実績ではない。
 
 ## security scan
 
@@ -63,16 +69,22 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 ## 実証済みの事実
 
 - localのquality、security、documentation、Helm、Compose、kind、rollout、observability、incident contractはpass
+- source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`に対するAWS revalidationのsanitized machine-readable evidenceは[`docs/aws/runtime-evidence.json`](aws/runtime-evidence.json)に保存する。main/recovery artifactのSHA-256 provenanceとcanonical evidence/manifestのSHA-256を同JSONに記録し、account ID、ARN、credential、token、endpoint、registry hostname、payload、Idempotency-Key生値、個人情報は含めない
 - 配送はat-least-onceであり、downstreamへのattemptが重複し得る
 - 検証した構成はsingle-node kind、single Redis、repository内mock sink
 - runtime検証はlocal buildしたapplication imageと固定済みupstream imageを使う
-- v0.1.0のtagとGitHub Releaseは公開済み
+- v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
+- `foundation` planは49/0/0、apply/readinessはPASSである。`runtime` planは0/3/0、apply/healthはPASSである。runtime smokeは4/4 PASSで、項目はnormal_delivery、idempotency_same、idempotency_conflict、aggregate passedである。image proof modeはAPIとworkerが`configuration_backed`、mock-sinkが`direct_plan`である
+- `cleanup` planは0/0/49、cleanupはPASSである。final state 6 resources、ECR repository 3、ECR lifecycle policy 3、required image 3を保持し、charge-heavy 0、ECR digest/contract match、ECS service/task 0、INACTIVE tombstone 1、apply process terminatedである
+- receipt/diagnosticの不整合はapplication障害ではない。旧validatorがdelete planの`after=null`を`.get()`してAttributeErrorになったこと、cleanup-recoveryが本体receipt/diagnosticをロードせず初期false/nullを残したこと、diagnosticのcleanup statusを更新しなかったことがconfirmed root causeである
+- current harnessのfixtureは既存v1.4 85件と今回追加20件が全PASSで、nullable plan fallback、cleanup `after=null`、full-success coherence、failure/recovery atomic receipt、redactionを検証した
 
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic
 - rolling 30日のSLO達成実績
 - production Alertmanager、notification destination、on-call運用
+- production運用、long-running stability、AWS pending recovery、automatic rollback完了、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査
 
 ## 配布範囲
 

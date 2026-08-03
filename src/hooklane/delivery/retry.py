@@ -12,6 +12,8 @@ class DeliveryErrorClass(StrEnum):
 
     TIMEOUT = "timeout"
     CONNECTION = "connection_error"
+    HTTP_1XX = "http_1xx"
+    HTTP_3XX = "http_3xx"
     HTTP_429 = "http_429"
     HTTP_5XX = "http_5xx"
     HTTP_4XX = "http_4xx"

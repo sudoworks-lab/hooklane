@@ -21,20 +21,20 @@ WORKDIR /app
 USER 10001:10001
 
 FROM runtime AS api
-LABEL org.opencontainers.image.version="0.1.0" \
+LABEL org.opencontainers.image.version="0.1.1" \
     io.hooklane.role="api"
 EXPOSE 8080
 ENTRYPOINT ["uvicorn"]
 CMD ["hooklane.api.app:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log", "--log-level", "warning"]
 
 FROM runtime AS worker
-LABEL org.opencontainers.image.version="0.1.0" \
+LABEL org.opencontainers.image.version="0.1.1" \
     io.hooklane.role="worker"
 EXPOSE 9090
 ENTRYPOINT ["python", "-m", "hooklane.worker.main"]
 
 FROM runtime AS mock-sink
-LABEL org.opencontainers.image.version="0.1.0" \
+LABEL org.opencontainers.image.version="0.1.1" \
     io.hooklane.role="mock-sink"
 EXPOSE 8080
 ENTRYPOINT ["uvicorn"]

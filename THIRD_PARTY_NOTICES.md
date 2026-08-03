@@ -20,7 +20,9 @@ DockerfileはPython base imageを参照する。Docker ComposeとHelm chartはRe
 
 ## 開発と検証tool
 
-localとCIの検証workflowはkind、Helm、Gitleaks、OSV-Scanner、Trivy、Kubeconformを使う。exact tool versionは[toolchain.toml](toolchain.toml)と[security-policy.json](security-policy.json)に記録する。これらのtoolをrepository binaryとして配布しない。
+localとCIの検証workflowはTerraform、kind、Helm、Gitleaks、OSV-Scanner、Trivy、Kubeconformを使う。exact tool versionは[toolchain.toml](toolchain.toml)と[security-policy.json](security-policy.json)に記録する。これらのtoolをrepository binaryとして配布しない。
+
+Terraform v1.15.5はHashiCorp公式の`terraform_1.15.5_linux_amd64.zip`を`~/.local/bin`へ取得する。CI installerは同じ公式archiveのSHA-256を、対応する`terraform_1.15.5_SHA256SUMS`から選択して検証してから展開し、sudoやsystem-global installを使わない。確認対象は[toolchain.toml](toolchain.toml)と[scripts/install_ci_tools.py](scripts/install_ci_tools.py)である。
 
 ## GitHub Actions
 
@@ -28,7 +30,7 @@ localとCIの検証workflowはkind、Helm、Gitleaks、OSV-Scanner、Trivy、Kub
 
 ## 配布に関する注記
 
-Hooklane v0.1.0はsource-onlyで公開している。prebuilt container image、container-registry artifact、release archive、binary distributionは配布しない。dependencyやimageのbuildまたはredistributionには各上流licenseに基づく義務が生じ得るため、exact upstream materialを確認する。
+Hooklane v0.1.1はsource-onlyで公開している。prebuilt container image、container-registry artifact、release archive、binary distributionは配布しない。dependencyやimageのbuildまたはredistributionには各上流licenseに基づく義務が生じ得るため、exact upstream materialを確認する。
 
 ## exact versionの確認方法
 
@@ -36,6 +38,7 @@ Hooklane v0.1.0はsource-onlyで公開している。prebuilt container image、
 - Python base image: [Dockerfile](Dockerfile)
 - Redis、Prometheus、Grafana image: [compose.yaml](compose.yaml)、[charts/hooklane/values.yaml](charts/hooklane/values.yaml)、[container-policy.json](container-policy.json)
 - kind nodeとvalidation tool: [toolchain.toml](toolchain.toml)
+- Terraform CLI: [toolchain.toml](toolchain.toml)、[scripts/install_ci_tools.py](scripts/install_ci_tools.py)、HashiCorp公式archiveとSHA256SUMS
 - security scanner: [security-policy.json](security-policy.json)
 - GitHub Actions: [.github/workflows/ci.yml](.github/workflows/ci.yml)
 

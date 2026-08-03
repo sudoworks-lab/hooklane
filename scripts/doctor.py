@@ -37,6 +37,7 @@ TOOL_CHECKS = {
     "osv_scanner": ToolCheck("OSV-Scanner", "osv-scanner", ("--version",)),
     "trivy": ToolCheck("Trivy", "trivy", ("--version",)),
     "kubeconform": ToolCheck("Kubeconform", "kubeconform", ("-v",)),
+    "terraform": ToolCheck("Terraform", "terraform", ("version",)),
 }
 
 

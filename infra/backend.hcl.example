@@ -1,0 +1,7 @@
+# Copy to a local, ignored backend.hcl and replace only the non-secret values.
+# The bucket must be bootstrapped before `terraform init` uses this backend.
+bucket       = "REPLACE_WITH_TERRAFORM_STATE_BUCKET"
+key          = "hooklane/dev/terraform.tfstate"
+region       = "ap-northeast-1"
+encrypt      = true
+use_lockfile = true

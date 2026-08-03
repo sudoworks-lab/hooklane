@@ -1,0 +1,20 @@
+aws_region             = "ap-northeast-1"
+environment            = "dev"
+# Replace this placeholder with the exact git-<40-lowercase-hex-commit> image tag before runtime.
+image_tag              = "git-REPLACE_WITH_40_HEX_COMMIT"
+desired_count          = 1
+# artifact creates ECR repositories only. Select foundation only after the
+# images are pushed, then select runtime to start the three ECS services.
+deployment_stage       = "artifact"
+enable_nat_gateway     = false
+enable_vpc_endpoints   = true
+cache_num_nodes        = 1
+enable_cache_multi_az  = false
+enable_container_insights = false
+log_retention_days     = 7
+
+# Replace this documentation-only sentinel with one Human-approved IPv4 /32 before apply.
+alb_ingress_cidr_blocks = ["192.0.2.1/32"]
+
+# Do not place Redis credentials in this file. Supply the sensitive value outside
+# source control only when an AUTH token is required.

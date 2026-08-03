@@ -35,7 +35,7 @@ Grafana dashboards
 
 - `API`: request validation、event ID採番、idempotency判定、enqueue、状態参照、API用health endpoint、metricsを担当する。
 - `worker`: consumer group、配送、attempt更新、retry scheduling、dead-letter、pending message回収、worker用health、graceful shutdownを担当する。
-- `mock sink`: 正常応答、5xx、遅延などを決定的に再現し、event ID単位の受信結果だけを検証可能にする。任意URL配送は提供しない。
+- `mock sink`: 正常応答、5xx、遅延などを決定的に再現し、event ID単位の受信結果だけを検証可能にする。配送先はmock sinkをdefaultとし、controlled endpointへの切替はoperator-controlledなstartup configurationで行い、requestからは変更できない。
 - `Redis`: Streams、consumer group、event status、idempotency mapping、retry schedule、dead-letterを単一instanceで保持する。Redis高可用性は対象外とする。
 - `observability`: payloadを収集せず、event IDまたはrequest IDでlogを相関し、低cardinalityのPrometheus metricsを公開する。
 - `delivery contract`: at-least-onceとし、成功時だけackする。重複配送は起こり得るため、downstreamはevent IDで重複排除する。
@@ -102,7 +102,7 @@ dependency lock方式、base image、kind node image、tool exact versionはKICK
 ### M04 Worker正常配送
 
 - 対応feature: `F004`
-- Scope: consumer group、worker、allowlist固定のmock sink、成功時ack、delivery statusを実装する。
+- Scope: consumer group、worker、mock sink default、operator-controlled startup destination、成功時ack、delivery statusを実装する。
 - 受け入れ基準: 正常配送だけがackされ、sink失敗はpendingに残り、at-least-once contractをtestで確認できる。
 - 検証command: `make test-integration TESTS='tests/integration/test_worker_delivery.py tests/integration/test_mock_sink.py'`
 
@@ -341,7 +341,7 @@ git diff --check
 | Python/FastAPI、Redis | F001-F010で使用する。 |
 | kind/Helm、Prometheus/Grafana | F013-F018で使用する。 |
 | 導入環境確認後にexact version固定、`latest`禁止 | F001、F011、F013、F017、F020でlock/configを検査する。 |
-| 外部cloud/SaaS/実credential不要、sinkはmock/allowlist限定 | F004、F011-F014、F029でcontractとclean-roomを検査する。 |
+| 外部cloud/SaaS/実credential不要、sinkはmock defaultとoperator-controlled startup configurationに限定 | F004、F011-F014、F029でcontractとclean-roomを検査する。 |
 | at-least-once、重複可能性、event ID重複排除を明記 | F004、F028、F029でtestとdocsを検査する。 |
 | livenessは外部依存の一時障害を直接条件にしない | F010、F015でtestする。 |
 | payload、secret、credential、Redis password、個人情報をlog/fixture/artifact/commitへ含めない | F003、F006、F016、F020、F029でnegative assertionとscanを行う。 |
@@ -427,4 +427,5 @@ KICKOFF自体ではDockerfile、Compose、Kubernetes manifest、Helm chart、Pro
 ## 判断メモ
 
 - 2026-07-13: 「v0.1 public snapshot」節のGitHub Actionsに関する記述は、公開前の計画時点を示す。現在の事実は[検証根拠](RELEASE_EVIDENCE.md)を正本とし、GitHub hosted Actionsでquality / security / chart gatesとkind delivery and recovery E2Eの成功を確認済み。
-- v0.1.0のtagとGitHub Releaseは公開済み。cloud production、実在する外部downstream、multi-node／multi-zone、long-running load、本番traffic、30日SLO達成実績は未確認のままとする。
+- v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張せず、cloud production、実在する外部downstream、multi-node／multi-zone、long-running load、本番traffic、30日SLO達成実績は未確認のままとする。
+- `platform/aws-interview-v1`では、v0.1.1 runtime contractを基礎にTerraform AWS foundationを追加する。これはv0.1 local Goalの受入結果を置き換えず、AWS apply、ECR push、cloud runtimeの証明は別のhuman gateとする。
