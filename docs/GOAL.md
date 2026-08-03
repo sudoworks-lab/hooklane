@@ -1,4 +1,8 @@
-# GOAL.md — spec
+# Hooklane Original P0 Goal
+
+## 位置付け
+
+これはHooklane Original P0 Goalであり、当初の設計入力と契約本文を保持する。Terraform/cloud deploymentがNon-goalだったのはP0時点のscopeであり、P0完了後に追加されたAWS/Terraform vertical sliceは[ADR 0005](adr/0005-aws-scope-extension.md)で承認されたscope extensionである。Original P0 Goalを後から書き換え、最初からAWSがGoalだったようには扱わない。
 
 ## 目的
 

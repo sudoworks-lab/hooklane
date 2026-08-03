@@ -86,6 +86,7 @@ local image buildとkind loadだけを使い、external registryへpushしない
 ### AWS Terraform foundation
 
 [`infra`](../infra/README.md)は、同じcontainer commandとenvironment contractをECS Fargate API、worker、controlled mock sinkへ適用する。source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。未確認事項は[制約](LIMITATIONS.md)と[sanitized AWS evidence](aws/runtime-evidence.json)に固定する。TerraformはCloudWatch Logs、Secrets Manager、IAM、deployment circuit breaker、remote state、destroy手順を定義する。
+このAWS evidenceはcurrent main自体をAWS-tested sourceとして扱わない。Original P0完了後のscope extensionであることは[ADR 0005](adr/0005-aws-scope-extension.md)に記録する。
 
 ## observability
 
@@ -102,7 +103,7 @@ application metricsは`hooklane_` prefixと有限label集合を使う。event ID
 
 [`ci.yml`](../.github/workflows/ci.yml)には`quality`と`e2e-kind`の2 jobがある。quality jobは`make verify`を呼び、kind jobはそのsuccess後に`make e2e-kind`を呼ぶ。workflowはread-only repository permission、full commit SHAで固定したaction、secretを必要としないpull request triggerを使う。
 
-GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。現在branchはPush後のPR CIで確認する。Hosted CIはcloud productionや本番trafficの実績ではない。
+Hosted CIの詳細な履歴は[検証根拠](RELEASE_EVIDENCE.md)を正本とする。PR #1のPR HEADに対するRun #9はsuccessであり、PR #1はmerge commitでmainへmerge済みである。merge commit固有のpush-triggered CI結果はtracked evidence上で独立確認済みとは扱わない。Hosted CIはcloud production、本番traffic、AWS runtimeの証拠ではない。
 
 ## trust boundary
 

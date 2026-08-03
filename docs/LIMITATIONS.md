@@ -45,7 +45,7 @@ Hooklaneは、Webhook受付、Redis Streams queue、at-least-once配送、observ
 - API authentication、authorization、tenant isolation、quota、abuse preventionを実装していない
 - Kubernetes NetworkPolicy、ingress TLS、egress firewallは対象外
 - Composeとkindの公開portはloopbackへ限定するが、shared untrusted hostをsecurity boundaryとして検証していない
-- source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。production運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査は未確認である。
+- source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。これはcurrent main自体をAWS-tested sourceとして示さず、production運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査は未確認である。
 - Redisにapplication payloadを保存するため、本番導入前にdata classification、retention、backup、encryptionを設計する必要がある
 - scanner databaseの更新により将来のfindingは変化し得る。過去のscan passは将来のvulnerability不在を保証しない
 
@@ -53,8 +53,9 @@ security controlと残存riskの詳細は[security](SECURITY.md)を参照する�
 
 ## CIと公開
 
-- GitHub hosted Actionsは公開mainの旧baselineでquality / security / chart gatesとkind delivery and recovery E2Eを実行済み。現在branchはPush後のPR CIで確認する
+- GitHub hosted ActionsのPR HEAD、Run #9、merge commitの関係は[検証根拠](RELEASE_EVIDENCE.md)を正本とする。merge commit固有のpush-triggered CI結果はtracked evidence上で独立確認済みとは扱わない
 - GitHub Actionsはcloud productionや本番trafficを検証しない
+- Hosted CIはcloud production、本番traffic、AWS runtimeの証拠ではない。
 - 上記AWS evidenceのreceipt SHA-256は`a1aa6f342f6b052525feba59afc6bef961b11b58b82804a37f6e34c3d305922e`、diagnostic SHA-256は`27b8d08b4c13af84090b7927d2d86a8fc6acce243e6bf7e4153827aadedaa4bd`である。tracked evidenceはcredential、token、account ID、ARN、endpoint、registry hostname、個人情報を含まない。
 - v0.1.1のtagがcurrent source baseline。GitHub Releaseの有無はこのsource contractでは主張しない
 - source code、Dockerfile、Helm chart、configuration、documentation、検証手順を公開する
