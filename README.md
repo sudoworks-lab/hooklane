@@ -107,6 +107,8 @@ make cluster-down
 
 このAWS evidenceはcurrent main自体をAWS-tested sourceとして扱うものではなく、production運用、long-running stability、AWS pending recovery、automatic rollback、retry/DLQ remote fault injection、real external downstream、autoscaling、OpenTelemetry/X-Ray、in-flight graceful shutdown、ECR scan severity、外部独立監査を実証しない。
 
+Test時点のmain commit `b1a73bb2f9b9d71e9cdfbbe96e76a20ee1852b5d`に対する限定AWS runtime checkについては、[sanitized targeted revalidation report](docs/evidence/aws-targeted-revalidation-2026-08-04.md)を参照する。AWSへdeployして検証したのはこのcommitのapplication/runtime sourceであり、このdocs-only commit自体はAWSへ再deployしていない。後続のmain commit全体をAWS検証済みとは扱わない。normal delivery、2件のRedis invariant failure scenario、runtime resource cleanupを確認し、retained ECR storageには少額の保存容量課金が発生し得る。
+
 ```bash
 make terraform-validate
 ```
