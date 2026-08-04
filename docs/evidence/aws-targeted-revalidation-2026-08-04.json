@@ -1,0 +1,84 @@
+{
+  "schema_version": "hooklane-aws-targeted-evidence/1.0",
+  "tested_at": "2026-08-04T07:50:22Z",
+  "source_commit": "b1a73bb2f9b9d71e9cdfbbe96e76a20ee1852b5d",
+  "verdict": "AWS_TARGETED_TEST_PASS_AND_CLEAN",
+  "managed_valkey_version": "7.2.4",
+  "deployment": {
+    "platform": "AWS ECS Fargate",
+    "api_tasks": 1,
+    "worker_tasks": 1,
+    "mock_sink_tasks": 1,
+    "tasks_healthy": true,
+    "load_balancer_healthy": true,
+    "immutable_source_images": 3,
+    "image_digest_match": true
+  },
+  "normal_delivery": {
+    "accepted_http_status": 202,
+    "eventual_status": "delivered",
+    "attempt_count_at_least_one": true,
+    "passed": true
+  },
+  "h01_poisoned_retry": {
+    "poison_member_removed": true,
+    "terminal_status_preserved": true,
+    "worker_continued": true,
+    "passed": true
+  },
+  "h02_malformed_pending": {
+    "downstream_not_called": true,
+    "metadata_only_quarantine": true,
+    "pending_count": 0,
+    "invalid_message_terminal_classification": true,
+    "passed": true
+  },
+  "post_failure_delivery": {
+    "after_h01": true,
+    "after_h02": true,
+    "passed": true
+  },
+  "cleanup": {
+    "passed": true,
+    "terraform_managed_resources": 6,
+    "active_runtime_resources_zero": true,
+    "terraform_apply_processes": 0
+  },
+  "final_inventory": {
+    "ecr_repositories": 3,
+    "ecr_lifecycle_policies": 3,
+    "tested_source_images": 3,
+    "active_ecs_services": 0,
+    "running_ecs_tasks": 0,
+    "pending_ecs_tasks": 0,
+    "application_load_balancers": 0,
+    "managed_valkey": 0,
+    "nat_gateways": 0,
+    "vpc_endpoints": 0,
+    "hooklane_vpcs": 0,
+    "cloudwatch_log_groups": 0,
+    "secrets_manager_secrets": 0,
+    "cloud_map_namespaces": 0,
+    "route53_private_hosted_zones": 0,
+    "terraform_apply_processes": 0
+  },
+  "retained_ecr": {
+    "repositories": 3,
+    "total_images": 27,
+    "tested_source_images": 3,
+    "approximate_compressed_storage_bytes": 459999829,
+    "may_incur_small_storage_charge": true
+  },
+  "evidence_sha256": "d0bec4e23b0c2af0ad3965ea34290d3a81fbb8d9944fbda52b6eb334f39fd94b",
+  "limitations": [
+    "full idempotency matrix",
+    "full retry/pending/dead-letter matrix",
+    "soak",
+    "high availability",
+    "autoscaling",
+    "rollback",
+    "external downstream",
+    "production certification",
+    "historical identity-fingerprint provenance"
+  ]
+}
