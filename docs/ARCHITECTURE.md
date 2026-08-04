@@ -60,6 +60,8 @@ timeout、connection failure、HTTP 429、HTTP 5xxはretryableとし、bounded e
 
 workerはconsumer-groupのpending messageを観測し、idle thresholdを超えたmessageをclaimする。claim後もevent IDは変えず、attempt countとstatus transitionを更新する。worker停止時の検証根拠は[worker stopの記録](incidents/worker-stop.md)と[postmortem](incidents/postmortem-worker-stop.md)を参照する。
 
+retry scheduleの不整合recordは、worker全体を停止させず、Redis Lua transition内で有限回に限定してscheduleから除去する。安全に特定できるstatusだけを`dead_letter`と`invariant_violation`へ遷移する。pending recoveryのLuaはstatus dispositionだけを判定し、payload、event type、timestampのparseはPython側を正本とする。Streamのparse不能entryはraw payloadを複製せずinternal quarantineへmetadataだけを保存してackする。
+
 ## healthとgraceful shutdown
 
 health endpointとapplication metrics endpointは分離する。
