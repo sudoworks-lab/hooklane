@@ -11,6 +11,12 @@
 
 設計boundaryと運用方法は[アーキテクチャ](ARCHITECTURE.md)、[運用](OPERATIONS.md)、[security](SECURITY.md)、[制約](LIMITATIONS.md)を参照する。
 
+## service availability
+
+`HooklaneApiUnavailable`と`HooklaneWorkerUnavailable`は、local kind上でscrape failure、application readiness false、scrape target / metric seriesの完全消失を短いwindowで検知する運用alertである。`up`だけに依存せず`hooklane_service_ready`を併用し、両seriesの`absent(...)`も条件に含める。
+
+現行chartはAPI 2 replica、worker 1 replicaである。APIはscrape可能かつreadyなinstanceが2未満になる部分喪失もcritical、workerは1 instanceを失うとcriticalとする。このthresholdはlocal deployment contractであり、production HAやmulti-zone availabilityの保証ではない。これらのalert状態をrolling 30日のSLO実績またはerror budget消費実績として扱わない。
+
 ## API受付可用性
 
 設計targetはrolling 30日で99.9%以上とする。有効なevent requestをRedis Streamsへ永続化し、`202 Accepted`を返したものを成功と数える。Redis operation failureまたは内部failureにより有効requestを受け付けられなかった場合は失敗と数える。
@@ -119,6 +125,8 @@ Redis停止またはRedis operation failureによりAPIが有効requestを永続
 
 | Signal | Alert | Runbook |
 |---|---|---|
+| API target / readiness | `HooklaneApiUnavailable` | [`HooklaneApiUnavailable.md`](runbooks/HooklaneApiUnavailable.md) |
+| worker target / readiness | `HooklaneWorkerUnavailable` | [`HooklaneWorkerUnavailable.md`](runbooks/HooklaneWorkerUnavailable.md) |
 | API 5xx | `HooklaneApiHighErrorRate` | [`HooklaneApiHighErrorRate.md`](runbooks/HooklaneApiHighErrorRate.md) |
 | queue depth | `HooklaneQueueBacklogGrowing` | [`HooklaneQueueBacklogGrowing.md`](runbooks/HooklaneQueueBacklogGrowing.md) |
 | oldest age | `HooklaneOldestEventTooOld` | [`HooklaneOldestEventTooOld.md`](runbooks/HooklaneOldestEventTooOld.md) |

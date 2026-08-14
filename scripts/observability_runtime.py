@@ -474,6 +474,8 @@ def smoke_base() -> None:
 def smoke_alerts() -> None:
     required_alerts = {
         "HooklaneApiHighErrorRate",
+        "HooklaneApiUnavailable",
+        "HooklaneWorkerUnavailable",
         "HooklaneQueueBacklogGrowing",
         "HooklaneOldestEventTooOld",
         "HooklaneDeliveryFailureRateHigh",
@@ -492,7 +494,15 @@ def smoke_alerts() -> None:
         wait_json(f"http://127.0.0.1:{PROMETHEUS_LOCAL_PORT}/api/v1/status/buildinfo")
         loaded = loaded_alert_names()
         if loaded != required_alerts:
-            fail(f"loaded alert set does not match the seven-rule contract: {sorted(loaded)}")
+            fail(f"loaded alert set does not match the nine-rule contract: {sorted(loaded)}")
+        availability_states = {
+            alert_name: wait_for_alert(
+                alert_name,
+                {"inactive"},
+                timeout_seconds=30,
+            )
+            for alert_name in ("HooklaneApiUnavailable", "HooklaneWorkerUnavailable")
+        }
         retry_before = query_value(retry_expression)
         failures_before = query_value(failure_expression)
         injected_event_ids: list[str] = []
@@ -513,6 +523,8 @@ def smoke_alerts() -> None:
                 {"pending", "firing"},
                 timeout_seconds=45,
             )
+            for alert_name in availability_states:
+                wait_for_alert(alert_name, {"inactive"}, timeout_seconds=30)
         finally:
             set_mock_sink_mode("accept")
 
@@ -544,8 +556,11 @@ def smoke_alerts() -> None:
             {"inactive"},
             timeout_seconds=75,
         )
+        for alert_name in availability_states:
+            wait_for_alert(alert_name, {"inactive"}, timeout_seconds=30)
         print(
-            "[ok] seven alerts loaded; downstream 5xx increased delivery/retry signals, "
+            "[ok] nine alerts loaded with healthy service availability inactive; "
+            "downstream 5xx increased delivery/retry signals, "
             f"alert states were {delivery_state}/{retry_state}, injected outcomes were "
             f"{','.join(sorted(injected_outcomes))}, and recovery returned to inactive"
         )

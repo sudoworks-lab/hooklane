@@ -92,6 +92,7 @@ INCIDENT_CONTRACTS = {
     ROOT / "docs" / "incidents" / "worker-stop.md": (
         ROOT / "docs" / "runbooks" / "HooklaneQueueBacklogGrowing.md",
         (
+            "HooklaneWorkerUnavailable",
             "HooklaneQueueBacklogGrowing",
             "HooklaneOldestEventTooOld",
             "hooklane_pending_messages",
@@ -175,6 +176,7 @@ def validate_documents() -> None:
     if not isinstance(dashboard, dict) or dashboard.get("title") != "Hooklane SLI and Operations":
         fail("incident documents reference an unknown dashboard")
     for alert_name in (
+        "HooklaneWorkerUnavailable",
         "HooklaneDeliveryFailureRateHigh",
         "HooklaneRetryRateHigh",
         "HooklaneRedisOperationFailures",
@@ -291,6 +293,8 @@ def verify_final_runtime() -> None:
                 label,
             )
         for alert_name in (
+            "HooklaneApiUnavailable",
+            "HooklaneWorkerUnavailable",
             "HooklaneDeliveryFailureRateHigh",
             "HooklaneRetryRateHigh",
             "HooklaneRedisOperationFailures",

@@ -19,6 +19,42 @@ groups:
           dashboard: Hooklane SLI and Operations / API error rate
           slo_sli: docs/SLO.md#api受付可用性
           severity: critical
+      - alert: HooklaneApiUnavailable
+        expr: |
+          max(
+            (sum(up{job="hooklane-applications",component="api"}) < 2)
+            or absent(up{job="hooklane-applications",component="api"})
+            or (sum(hooklane_service_ready{service="api"}) < 2)
+            or absent(hooklane_service_ready{service="api"})
+          )
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane has fewer than two scrapeable and ready API instances
+          impact: The local API availability contract is degraded or unavailable.
+          runbook: docs/runbooks/HooklaneApiUnavailable.md
+          dashboard: Hooklane SLI and Operations / Available API replicas
+          slo_sli: docs/SLO.md#service-availability
+          severity: critical
+      - alert: HooklaneWorkerUnavailable
+        expr: |
+          max(
+            (sum(up{job="hooklane-applications",component="worker"}) < 1)
+            or absent(up{job="hooklane-applications",component="worker"})
+            or (sum(hooklane_service_ready{service="worker"}) < 1)
+            or absent(hooklane_service_ready{service="worker"})
+          )
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: Hooklane has no scrapeable and ready worker instance
+          impact: Accepted events cannot make delivery progress until a worker recovers.
+          runbook: docs/runbooks/HooklaneWorkerUnavailable.md
+          dashboard: Hooklane SLI and Operations / Worker in-flight
+          slo_sli: docs/SLO.md#service-availability
+          severity: critical
       - alert: HooklaneQueueBacklogGrowing
         expr: |
           max(hooklane_queue_depth{service=~"api|worker"}) > 0

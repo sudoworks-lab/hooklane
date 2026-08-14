@@ -110,7 +110,7 @@ MAKE_TARGET = re.compile(r"^([a-z][a-z0-9_.-]*):", re.MULTILINE)
 METRIC_REFERENCE = re.compile(r"\bhooklane_[a-z0-9_]+\b")
 METRIC_DEFINITION = re.compile(r'"(hooklane_[a-z0-9_]+)"\s*:')
 ALERT_REFERENCE = re.compile(
-    r"\bHooklane(?:Api|Queue|Oldest|Delivery|Retry|DeadLetter|Redis)[A-Za-z]+\b"
+    r"\bHooklane(?:Api|Worker|Queue|Oldest|Delivery|Retry|DeadLetter|Redis)[A-Za-z]+\b"
 )
 ALERT_DEFINITION = re.compile(r"^\s*-\s*alert:\s*(Hooklane[A-Za-z]+)\s*$", re.MULTILINE)
 

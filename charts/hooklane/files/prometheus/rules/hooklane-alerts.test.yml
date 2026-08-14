@@ -1,0 +1,191 @@
+rule_files:
+  - hooklane-alerts.yml
+
+evaluation_interval: 5s
+
+tests:
+  - name: healthy API and worker do not fire availability alerts
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="api",instance="api-1"}'
+        values: '1x6'
+      - series: 'up{job="hooklane-applications",component="api",instance="api-2"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-1",service="api"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-2",service="api"}'
+        values: '1x6'
+      - series: 'up{job="hooklane-applications",component="worker",instance="worker-1"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="worker",instance="worker-1",service="worker"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneApiUnavailable
+        exp_alerts: []
+      - eval_time: 20s
+        alertname: HooklaneWorkerUnavailable
+        exp_alerts: []
+
+  - name: missing worker target fires worker availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="api",instance="api-1"}'
+        values: '1x6'
+      - series: 'up{job="hooklane-applications",component="api",instance="api-2"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-1",service="api"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-2",service="api"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneWorkerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has no scrapeable and ready worker instance
+              impact: Accepted events cannot make delivery progress until a worker recovers.
+              runbook: docs/runbooks/HooklaneWorkerUnavailable.md
+              dashboard: Hooklane SLI and Operations / Worker in-flight
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical
+
+  - name: worker scrape failure fires worker availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="worker",instance="worker-1"}'
+        values: '0x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="worker",instance="worker-1",service="worker"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneWorkerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has no scrapeable and ready worker instance
+              impact: Accepted events cannot make delivery progress until a worker recovers.
+              runbook: docs/runbooks/HooklaneWorkerUnavailable.md
+              dashboard: Hooklane SLI and Operations / Worker in-flight
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical
+
+  - name: worker not ready fires worker availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="worker",instance="worker-1"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="worker",instance="worker-1",service="worker"}'
+        values: '0x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneWorkerUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has no scrapeable and ready worker instance
+              impact: Accepted events cannot make delivery progress until a worker recovers.
+              runbook: docs/runbooks/HooklaneWorkerUnavailable.md
+              dashboard: Hooklane SLI and Operations / Worker in-flight
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical
+
+  - name: API scrape failure fires API availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="api",instance="api-1"}'
+        values: '0x6'
+      - series: 'up{job="hooklane-applications",component="api",instance="api-2"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-1",service="api"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-2",service="api"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneApiUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has fewer than two scrapeable and ready API instances
+              impact: The local API availability contract is degraded or unavailable.
+              runbook: docs/runbooks/HooklaneApiUnavailable.md
+              dashboard: Hooklane SLI and Operations / Available API replicas
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical
+
+  - name: API not ready fires API availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="api",instance="api-1"}'
+        values: '1x6'
+      - series: 'up{job="hooklane-applications",component="api",instance="api-2"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-1",service="api"}'
+        values: '0x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-2",service="api"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneApiUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has fewer than two scrapeable and ready API instances
+              impact: The local API availability contract is degraded or unavailable.
+              runbook: docs/runbooks/HooklaneApiUnavailable.md
+              dashboard: Hooklane SLI and Operations / Available API replicas
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical
+
+  - name: one missing API replica fires API availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="api",instance="api-1"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="api",instance="api-1",service="api"}'
+        values: '1x6'
+      - series: 'up{job="hooklane-applications",component="worker",instance="worker-1"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="worker",instance="worker-1",service="worker"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneApiUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has fewer than two scrapeable and ready API instances
+              impact: The local API availability contract is degraded or unavailable.
+              runbook: docs/runbooks/HooklaneApiUnavailable.md
+              dashboard: Hooklane SLI and Operations / Available API replicas
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical
+
+  - name: all missing API targets fire API availability alert
+    interval: 5s
+    input_series:
+      - series: 'up{job="hooklane-applications",component="worker",instance="worker-1"}'
+        values: '1x6'
+      - series: 'hooklane_service_ready{job="hooklane-applications",component="worker",instance="worker-1",service="worker"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: HooklaneApiUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: Hooklane has fewer than two scrapeable and ready API instances
+              impact: The local API availability contract is degraded or unavailable.
+              runbook: docs/runbooks/HooklaneApiUnavailable.md
+              dashboard: Hooklane SLI and Operations / Available API replicas
+              slo_sli: docs/SLO.md#service-availability
+              severity: critical

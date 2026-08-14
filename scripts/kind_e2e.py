@@ -579,27 +579,41 @@ def configure_sink_helm(
     mode: str,
     delay_seconds: int,
     image_tag: str | None = None,
+    *,
+    worker_replica_count: int | None = None,
 ) -> None:
     resolved_image_tag = image_tag if image_tag is not None else kind_runtime.resolve_image_tag()
-    kind_runtime.helm(
-        *e2e_helm_arguments(
-            resolved_image_tag,
-            "upgrade",
-            kind_runtime.RELEASE,
-            str(kind_runtime.CHART),
-            "--namespace",
-            kind_runtime.NAMESPACE,
-            "--reuse-values",
-            "--set",
-            f"mockSink.failureMode={mode}",
-            "--set",
-            f"mockSink.delaySeconds={delay_seconds}",
+    helm_arguments = [
+        "upgrade",
+        kind_runtime.RELEASE,
+        str(kind_runtime.CHART),
+        "--namespace",
+        kind_runtime.NAMESPACE,
+        "--reuse-values",
+        "--set",
+        f"mockSink.failureMode={mode}",
+        "--set",
+        f"mockSink.delaySeconds={delay_seconds}",
+    ]
+    if worker_replica_count is not None:
+        helm_arguments.extend(
+            [
+                "--set",
+                f"worker.replicaCount={worker_replica_count}",
+                "--skip-schema-validation",
+            ]
+        )
+    helm_arguments.extend(
+        [
             "--wait",
             "--timeout",
             "180s",
             "--history-max",
             "5",
-        ),
+        ]
+    )
+    kind_runtime.helm(
+        *e2e_helm_arguments(resolved_image_tag, *helm_arguments),
     )
     wait_rollout(f"deployment/{MOCK_SINK_DEPLOYMENT}")
     wait_for_mock_sink_rollout()

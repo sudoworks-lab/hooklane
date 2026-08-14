@@ -117,6 +117,8 @@ dead-letterは`hooklane_dead_letter_total`、`HooklaneDeadLetterIncreasing`、�
 
 | alert | 主signal | Runbook |
 |---|---|---|
+| `HooklaneApiUnavailable` | API `up` / `hooklane_service_ready` / series absence | [API availability](runbooks/HooklaneApiUnavailable.md) |
+| `HooklaneWorkerUnavailable` | worker `up` / `hooklane_service_ready` / series absence | [Worker availability](runbooks/HooklaneWorkerUnavailable.md) |
 | `HooklaneApiHighErrorRate` | `hooklane_http_requests_total` | [API high error rate](runbooks/HooklaneApiHighErrorRate.md) |
 | `HooklaneQueueBacklogGrowing` | `hooklane_queue_depth` | [Queue backlog](runbooks/HooklaneQueueBacklogGrowing.md) |
 | `HooklaneOldestEventTooOld` | `hooklane_oldest_queued_event_age_seconds` | [Oldest event](runbooks/HooklaneOldestEventTooOld.md) |

@@ -16,14 +16,20 @@ from observability_validate import PROMETHEUS_IMAGE
 
 ROOT = Path(__file__).resolve().parents[1]
 RULES = CHART / "files" / "prometheus" / "rules" / "hooklane-alerts.yml"
+RULE_TESTS = CHART / "files" / "prometheus" / "rules" / "hooklane-alerts.test.yml"
 DASHBOARD = CHART / "files" / "grafana" / "dashboards" / "hooklane-overview.json"
 SLO = ROOT / "docs" / "SLO.md"
 METRIC_CONTRACT = ROOT / "src" / "hooklane" / "observability" / "metrics.py"
 REQUIRED_ALERTS = {
     "HooklaneApiHighErrorRate",
+    "HooklaneApiUnavailable",
+    "HooklaneWorkerUnavailable",
     "HooklaneQueueBacklogGrowing",
     "HooklaneOldestEventTooOld",
     "HooklaneDeliveryFailureRateHigh",
+    "HooklaneRetryRateHigh",
+    "HooklaneDeadLetterIncreasing",
+    "HooklaneRedisOperationFailures",
 }
 REQUIRED_ANNOTATIONS = {"summary", "impact", "runbook", "dashboard", "slo_sli", "severity"}
 REQUIRED_RUNBOOK_HEADINGS = {
@@ -53,6 +59,7 @@ def load_dashboard() -> dict[str, Any]:
 
 def promtool_check_rules() -> None:
     os.chmod(RULES, 0o644)
+    os.chmod(RULE_TESTS, 0o644)
     subprocess.run(
         [
             "docker",
@@ -63,11 +70,30 @@ def promtool_check_rules() -> None:
             "--entrypoint",
             "/bin/promtool",
             "--volume",
-            f"{RULES}:/tmp/hooklane-alerts.yml:ro",
+            f"{RULES.parent}:/tmp/rules:ro",
             PROMETHEUS_IMAGE,
             "check",
             "rules",
-            "/tmp/hooklane-alerts.yml",
+            "/tmp/rules/hooklane-alerts.yml",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--entrypoint",
+            "/bin/promtool",
+            "--volume",
+            f"{RULES.parent}:/tmp/rules:ro",
+            PROMETHEUS_IMAGE,
+            "test",
+            "rules",
+            "/tmp/rules/hooklane-alerts.test.yml",
         ],
         cwd=ROOT,
         check=True,
@@ -111,8 +137,8 @@ def validate_runbook(path_text: str, alert_name: str, make_targets: set[str]) ->
 def validate_rule_contracts() -> tuple[set[str], set[str]]:
     rules_text = RULES.read_text(encoding="utf-8")
     blocks = alert_blocks(rules_text)
-    if len(blocks) < 4 or not REQUIRED_ALERTS.issubset(blocks):
-        fail("required alert rules are missing")
+    if set(blocks) != REQUIRED_ALERTS:
+        fail(f"alert rules do not match the nine-rule contract: {sorted(blocks)}")
     known_metrics = metric_names()
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     make_targets = set(re.findall(r"^([a-zA-Z0-9_-]+):", makefile, flags=re.MULTILINE))
@@ -145,6 +171,14 @@ def validate_rule_contracts() -> tuple[set[str], set[str]]:
             "annotations:", maxsplit=1
         )[0]:
             fail(f"{name} label and annotation severity do not match")
+        label_section = block.split("labels:", maxsplit=1)[1].split(
+            "annotations:", maxsplit=1
+        )[0]
+        label_names = set(
+            re.findall(r"^\s+([a-zA-Z_][a-zA-Z0-9_]*):", label_section, re.MULTILINE)
+        )
+        if label_names != {"severity"}:
+            fail(f"{name} alert labels must contain only bounded severity")
         runbook_path = annotation_values["runbook"]
         validate_runbook(runbook_path, name, make_targets)
         runbooks.add(runbook_path)
@@ -162,6 +196,18 @@ def validate_rule_contracts() -> tuple[set[str], set[str]]:
             if metric not in known_metrics and base_metric not in known_metrics:
                 fail(f"{name} references unknown metric {metric}")
         referenced_metrics.update(metrics)
+
+        if name in {"HooklaneApiUnavailable", "HooklaneWorkerUnavailable"}:
+            expression = block.split("for:", maxsplit=1)[0]
+            component = "api" if name == "HooklaneApiUnavailable" else "worker"
+            for marker in (
+                f'up{{job="hooklane-applications",component="{component}"}}',
+                f'hooklane_service_ready{{service="{component}"}}',
+                "absent(up{",
+                "absent(hooklane_service_ready{",
+            ):
+                if marker not in expression:
+                    fail(f"{name} does not cover required availability signal {marker}")
 
     required_signals = {
         "hooklane_delivery_outcomes_total",

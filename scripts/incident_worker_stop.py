@@ -17,6 +17,7 @@ import observability_runtime
 ROOT = Path(__file__).resolve().parents[1]
 INCIDENT_RECORD = ROOT / "docs" / "incidents" / "worker-stop.md"
 RUNBOOK = ROOT / "docs" / "runbooks" / "HooklaneQueueBacklogGrowing.md"
+AVAILABILITY_RUNBOOK = ROOT / "docs" / "runbooks" / "HooklaneWorkerUnavailable.md"
 DELIVERY_CONTRACT = ROOT / "src" / "hooklane" / "delivery" / "sink.py"
 IN_FLIGHT_METRIC = 'sum(hooklane_worker_in_flight{service="worker"})'
 PENDING_METRIC = 'max(hooklane_pending_messages{service=~"api|worker"})'
@@ -25,6 +26,11 @@ OLDEST_METRIC = 'max(hooklane_oldest_queued_event_age_seconds{service=~"api|work
 SUCCESS_METRIC = (
     'sum(hooklane_delivery_outcomes_total{service="worker",outcome="success"})'
 )
+WORKER_TARGET_ABSENT = (
+    'absent(up{job="hooklane-applications",component="worker"})'
+)
+WORKER_TARGET_UP = 'sum(up{job="hooklane-applications",component="worker"})'
+WORKER_READY = 'sum(hooklane_service_ready{service="worker"})'
 
 
 def fail(message: str) -> Never:
@@ -101,6 +107,7 @@ def verify_log_safety(*log_texts: str) -> None:
 def verify_incident_links() -> None:
     record = INCIDENT_RECORD.read_text(encoding="utf-8")
     runbook = RUNBOOK.read_text(encoding="utf-8")
+    availability_runbook = AVAILABILITY_RUNBOOK.read_text(encoding="utf-8")
     contract = DELIVERY_CONTRACT.read_text(encoding="utf-8")
     required_sections = (
         "## 再現手順",
@@ -120,11 +127,16 @@ def verify_incident_links() -> None:
         fail("worker incident record is missing a required section")
     if "../incidents/worker-stop.md" not in runbook:
         fail("queue backlog Runbook does not link back to the incident drill")
+    if "../incidents/worker-stop.md" not in availability_runbook:
+        fail("worker availability Runbook does not link back to the incident drill")
     for reference in (
+        "HooklaneWorkerUnavailable",
         "HooklaneQueueBacklogGrowing",
         "HooklaneOldestEventTooOld",
+        "../runbooks/HooklaneWorkerUnavailable.md",
         "../runbooks/HooklaneQueueBacklogGrowing.md",
         "../SLO.md#配送適時性",
+        "absent(up",
         "hooklane_pending_messages",
         "Hooklane SLI and Operations",
     ):
@@ -178,19 +190,6 @@ def live_worker_metrics(pod_name: str) -> tuple[float, float]:
     )
 
 
-def stop_worker_process(pod_name: str) -> None:
-    kind_e2e.run_kubectl(
-        "--namespace",
-        kind_runtime.NAMESPACE,
-        "exec",
-        pod_name,
-        "--",
-        "python",
-        "-c",
-        "import os, signal; os.kill(1, signal.SIGSTOP)",
-    )
-
-
 def wait_no_worker_pods() -> None:
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
@@ -218,6 +217,56 @@ def wait_no_worker_pods() -> None:
     fail("worker Pod did not stop")
 
 
+def stop_worker_container(pod_name: str) -> None:
+    pod = kind_e2e.kubectl_json(
+        "--namespace",
+        kind_runtime.NAMESPACE,
+        "get",
+        "pod",
+        pod_name,
+    )
+    status = pod.get("status")
+    if not isinstance(status, dict):
+        fail("worker Pod status is unavailable")
+    container_statuses = status.get("containerStatuses")
+    if not isinstance(container_statuses, list):
+        fail("worker container status is unavailable")
+    container_id: str | None = None
+    for item in container_statuses:
+        if not isinstance(item, dict) or item.get("name") != "worker":
+            continue
+        candidate = item.get("containerID")
+        if isinstance(candidate, str):
+            container_id = candidate
+        break
+    if container_id is None or not container_id.startswith("containerd://"):
+        fail("worker container runtime is not the expected local containerd")
+    nodes = [
+        line.strip()
+        for line in kind_runtime.output(
+            ["kind", "get", "nodes", "--name", kind_runtime.CLUSTER_NAME]
+        ).splitlines()
+        if line.strip()
+    ]
+    if len(nodes) != 1:
+        fail("local kind cluster does not have exactly one control-plane node")
+    subprocess.run(
+        [
+            "docker",
+            "exec",
+            nodes[0],
+            "crictl",
+            "stop",
+            "--timeout=0",
+            container_id.removeprefix("containerd://"),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        timeout=10,
+    )
+
+
 def wait_single_mock_sink_pod() -> None:
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
@@ -241,16 +290,7 @@ def wait_single_mock_sink_pod() -> None:
 
 
 def restore_sink_while_worker_stopped() -> None:
-    kind_e2e.run_kubectl(
-        "--namespace",
-        kind_runtime.NAMESPACE,
-        "set",
-        "env",
-        "deployment/hooklane-mock-sink",
-        "HOOKLANE_MOCK_SINK_MODE=accept",
-        "HOOKLANE_MOCK_SINK_DELAY_SECONDS=0",
-    )
-    kind_e2e.wait_rollout("deployment/hooklane-mock-sink")
+    kind_e2e.configure_sink_helm("accept", 0, worker_replica_count=0)
     wait_single_mock_sink_pod()
     worker = kind_e2e.kubectl_json(
         "--namespace",
@@ -298,17 +338,16 @@ def run_drill() -> None:
         original_worker = kind_e2e.worker_pod_name()
         event_id = kind_e2e.post_event("incident.worker.stop")
         kind_e2e.wait_event_state(event_id, "delivering", timeout_seconds=45)
-        initial_receipts = wait_sink_receipts(event_id, 1)
-        if initial_receipts != 1:
-            fail("original worker produced more than one downstream side effect")
-        original_sink_log_text = common.component_logs("mock-sink")
         in_flight, attempts = live_worker_metrics(original_worker)
         if in_flight != 1 or attempts != 1:
             fail(
                 "worker live metrics did not capture one in-flight first attempt; "
                 f"in_flight={in_flight}, attempts={attempts}"
             )
-        stop_worker_process(original_worker)
+        initial_receipts = wait_sink_receipts(event_id, 1)
+        if initial_receipts != 1:
+            fail("original worker produced more than one downstream side effect")
+        original_sink_log_text = common.component_logs("mock-sink")
         original_log_text = common.component_logs("worker")
         original_records = common.structured_records(original_log_text)
 
@@ -321,6 +360,7 @@ def run_drill() -> None:
                 "--replicas=0",
             )
             worker_scaled_down = True
+            stop_worker_container(original_worker)
             kind_e2e.run_kubectl(
                 "--namespace",
                 kind_runtime.NAMESPACE,
@@ -332,6 +372,11 @@ def run_drill() -> None:
                 "--wait=false",
             )
             wait_no_worker_pods()
+            common.wait_metric(
+                WORKER_TARGET_ABSENT,
+                lambda value: value == 1,
+                "worker scrape target absent",
+            )
             common.wait_metric(PENDING_METRIC, lambda value: value >= 1, "pending >= 1")
             common.wait_metric(QUEUE_METRIC, lambda value: value >= 1, "queue depth >= 1")
             pending_record = kind_e2e.event_status(event_id)
@@ -339,6 +384,11 @@ def run_drill() -> None:
                 fail("stopped worker event did not remain delivering")
             if pending_record.get("attempt_count") != 1:
                 fail("stopped worker event attempt count changed before claim")
+            availability_alert = observability_runtime.wait_for_alert(
+                "HooklaneWorkerUnavailable",
+                {"pending", "firing"},
+                timeout_seconds=60,
+            )
             backlog_alert = observability_runtime.wait_for_alert(
                 "HooklaneQueueBacklogGrowing",
                 {"pending", "firing"},
@@ -368,6 +418,12 @@ def run_drill() -> None:
         replacement_worker = kind_e2e.worker_pod_name()
         if replacement_worker == original_worker:
             fail("worker Pod was not replaced")
+        common.wait_metric(
+            WORKER_TARGET_UP,
+            lambda value: value >= 1,
+            "worker scrape target up",
+        )
+        common.wait_metric(WORKER_READY, lambda value: value >= 1, "worker ready = 1")
         delivered = kind_e2e.wait_event_state(event_id, "delivered", timeout_seconds=120)
         if delivered.get("attempt_count") != 2:
             fail("replacement worker did not preserve the attempt transition to 2")
@@ -406,6 +462,11 @@ def run_drill() -> None:
             {"inactive"},
             timeout_seconds=75,
         )
+        observability_runtime.wait_for_alert(
+            "HooklaneWorkerUnavailable",
+            {"inactive"},
+            timeout_seconds=75,
+        )
         recovery_id = kind_e2e.post_event("incident.worker.recovery")
         recovery = kind_e2e.wait_event_state(recovery_id, "delivered")
         if recovery.get("attempt_count") != 1:
@@ -415,7 +476,9 @@ def run_drill() -> None:
         print(
             "[ok] worker stop drill: side effect preceded ack, pending was reclaimed at "
             f"attempt 2, sink observed {receipt_attempts} deliveries for one event ID, "
-            f"alerts were {backlog_alert}/{oldest_alert}, and no event was lost"
+            "the worker target became absent, "
+            f"alerts were {availability_alert}/{backlog_alert}/{oldest_alert}, "
+            "availability recovered to inactive, and no event was lost"
         )
 
 

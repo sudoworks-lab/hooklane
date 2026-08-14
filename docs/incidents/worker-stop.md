@@ -1,7 +1,7 @@
 # Worker stop incident drill
 
 - Command: `make incident-worker-stop`
-- Alert: [`HooklaneQueueBacklogGrowing`](../runbooks/HooklaneQueueBacklogGrowing.md)、[`HooklaneOldestEventTooOld`](../runbooks/HooklaneOldestEventTooOld.md)
+- Alert: [`HooklaneWorkerUnavailable`](../runbooks/HooklaneWorkerUnavailable.md)、[`HooklaneQueueBacklogGrowing`](../runbooks/HooklaneQueueBacklogGrowing.md)、[`HooklaneOldestEventTooOld`](../runbooks/HooklaneOldestEventTooOld.md)
 - SLI/SLO: [`配送適時性`](../SLO.md#配送適時性)、[`queue backlogとoldest event age`](../SLO.md#queue-backlogとoldest-event-age)
 - Dashboard: `Hooklane SLI and Operations` の `Worker in-flight`、`Pending message count`、`Queue depth`、`Oldest queued event age`
 - Blameless postmortem: [`Worker stop recovery`](postmortem-worker-stop.md)
@@ -17,12 +17,13 @@ accepted eventはstatus `delivering`、attempt 1、Redis consumer group pending 
 ## 期待するmetrics
 
 - 停止前に`hooklane_worker_in_flight`が1、`hooklane_delivery_attempts_total`が増加する。
+- 停止後に`absent(up{job="hooklane-applications",component="worker"})`が1となり、worker scrape targetのseries消失を示す。
 - 停止後に`hooklane_pending_messages`と`hooklane_queue_depth`が1以上、`hooklane_oldest_queued_event_age_seconds`が20秒を超える。
 - 復旧後にdelivery successが増え、worker in-flight、pending、queue depth、oldest ageが0へ戻る。
 
 ## 期待するalert
 
-`HooklaneQueueBacklogGrowing`と`HooklaneOldestEventTooOld`がpendingまたはfiringになる。alert annotationから対応Runbook、dashboard、配送適時性SLOへ辿る。
+`HooklaneWorkerUnavailable`、`HooklaneQueueBacklogGrowing`、`HooklaneOldestEventTooOld`がpendingまたはfiringになる。service availability、queue backlog、oldest ageの責務を混ぜず、各alert annotationから対応Runbook、dashboard、SLOへ辿る。
 
 ## Structured log
 
@@ -30,7 +31,7 @@ accepted eventはstatus `delivering`、attempt 1、Redis consumer group pending 
 
 ## 初動切り分け
 
-[`HooklaneQueueBacklogGrowing` Runbook](../runbooks/HooklaneQueueBacklogGrowing.md)に従い、worker Pod有無、consumer pending、in-flight、queue depth、oldest age、sink mode、Redis Readyを確認する。downstream 5xx、Redis outage、正常graceful drainとは分類を分ける。
+[`HooklaneWorkerUnavailable` Runbook](../runbooks/HooklaneWorkerUnavailable.md)と[`HooklaneQueueBacklogGrowing` Runbook](../runbooks/HooklaneQueueBacklogGrowing.md)に従い、worker Pod / scrape target / readiness、consumer pending、in-flight、queue depth、oldest age、sink mode、Redis Readyを確認する。downstream 5xx、Redis outage、正常graceful drainとは分類を分ける。
 
 ## 暫定対応
 
@@ -42,7 +43,7 @@ replacement workerをReadyにし、同じevent IDがattempt 2以上で再配送�
 
 ## 復旧確認
 
-対象eventがdeliveredまたはpolicyどおりterminal state、pending/queue/oldest/in-flightが0、worker Ready、新規eventがattempt 1でdelivered、backlog/oldest alertがinactiveであることを確認する。
+対象eventがdeliveredまたはpolicyどおりterminal state、pending/queue/oldest/in-flightが0、worker targetがUPかつReady、新規eventがattempt 1でdelivered、availability/backlog/oldest alertがinactiveであることを確認する。
 
 ## データ消失の有無
 
