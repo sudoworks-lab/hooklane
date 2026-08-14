@@ -246,9 +246,9 @@ incident-redis-outage: images-build observability-images chart-validate alert-ru
 
 incident-worker-stop: images-build observability-images chart-validate alert-rules-check
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
-	@$(PYTHON) scripts/incident_worker_stop.py
+	@PYTHONPATH=src $(PYTHON) scripts/incident_worker_stop.py $(if $(NORMALIZED_OUTPUT),--normalized-output "$(NORMALIZED_OUTPUT)",)
 
 incident-smoke: images-build observability-images chart-validate alert-rules-check
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
-	@$(PYTHON) scripts/incident_smoke.py
+	@PYTHONPATH=src $(PYTHON) scripts/incident_smoke.py
 	@git diff --check

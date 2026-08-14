@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import subprocess
 import time
-from typing import Any, Never, cast
+from typing import Any, Literal, Never, cast
 
 import incident_downstream_5xx as common
 import kind_e2e
 import kind_runtime
 import observability_runtime
+from hooklane.observability.normalized_signal import (
+    WorkerUnavailableObservation,
+    normalize_worker_unavailable,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +36,23 @@ WORKER_TARGET_ABSENT = (
 )
 WORKER_TARGET_UP = 'sum(up{job="hooklane-applications",component="worker"})'
 WORKER_READY = 'sum(hooklane_service_ready{service="worker"})'
+WORKER_READY_ABSENT = 'absent(hooklane_service_ready{service="worker"})'
+WORKER_UNAVAILABLE_HOLD_SECONDS = 15.0
+NORMALIZED_SOURCE_REF = "docs/incidents/worker-stop.md"
+NORMALIZED_EVIDENCE_REFS = [
+    "docs/incidents/worker-stop.md",
+    "docs/runbooks/HooklaneWorkerUnavailable.md",
+    "docs/runbooks/HooklaneQueueBacklogGrowing.md",
+]
+
+
+def ops_captured_at(timestamp: str) -> str:
+    """Adapt Prometheus alert timestamps to the ops manifest's millisecond contract."""
+
+    if "." not in timestamp:
+        return timestamp
+    base, fraction = timestamp[:-1].split(".", 1)
+    return f"{base}.{fraction[:3].ljust(3, '0')}Z"
 
 
 def fail(message: str) -> Never:
@@ -303,7 +325,54 @@ def restore_sink_while_worker_stopped() -> None:
         fail("sink recovery restarted the worker before the failure injection ended")
 
 
-def run_drill() -> None:
+def write_normalized_worker_signal(
+    output_path: Path | None,
+    *,
+    event_id: str,
+    availability_observation: dict[str, str],
+    available_instances: float,
+    signal_id: str | None = None,
+    correlation_id: str | None = None,
+    observed_at: str | None = None,
+) -> None:
+    if output_path is None:
+        return
+    resolved_path = output_path.resolve()
+    if resolved_path.is_relative_to(ROOT):
+        fail("normalized output must be outside the Hooklane repository")
+    active_at = observed_at or availability_observation.get("active_at", "")
+    alert_state = availability_observation.get("state", "")
+    if not active_at or alert_state not in {"pending", "firing"}:
+        fail("normalized output requires an observed worker availability alert state and timestamp")
+    normalized_alert_state = cast(Literal["pending", "firing"], alert_state)
+    if available_instances != 0:
+        fail("normalized output requires zero observed available worker instances")
+    observation = WorkerUnavailableObservation(
+        signal_id=signal_id or f"worker-stop-{event_id}",
+        observed_at=active_at,
+        correlation_id=correlation_id or event_id,
+        alert_state=normalized_alert_state,
+        target_present=False,
+        readiness_present=False,
+        available_instances=0,
+        required_instances=1,
+        required_duration_seconds=WORKER_UNAVAILABLE_HOLD_SECONDS,
+        source_ref=NORMALIZED_SOURCE_REF,
+        captured_at=ops_captured_at(active_at),
+        evidence_refs=NORMALIZED_EVIDENCE_REFS,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(normalize_worker_unavailable(observation))
+    print(f"[ok] normalized worker availability signal written to {output_path}")
+
+
+def run_drill(
+    *,
+    normalized_output: Path | None = None,
+    normalized_signal_id: str | None = None,
+    normalized_correlation_id: str | None = None,
+    normalized_observed_at: str | None = None,
+) -> None:
     kind_runtime.deploy()
     kind_e2e.deploy_e2e_release()
     kind_runtime.helm_test()
@@ -377,6 +446,16 @@ def run_drill() -> None:
                 lambda value: value == 1,
                 "worker scrape target absent",
             )
+            available_instances = common.wait_metric(
+                WORKER_READY,
+                lambda value: value == 0,
+                "worker ready = 0",
+            )
+            common.wait_metric(
+                WORKER_READY_ABSENT,
+                lambda value: value == 1,
+                "worker readiness series absent",
+            )
             common.wait_metric(PENDING_METRIC, lambda value: value >= 1, "pending >= 1")
             common.wait_metric(QUEUE_METRIC, lambda value: value >= 1, "queue depth >= 1")
             pending_record = kind_e2e.event_status(event_id)
@@ -384,11 +463,12 @@ def run_drill() -> None:
                 fail("stopped worker event did not remain delivering")
             if pending_record.get("attempt_count") != 1:
                 fail("stopped worker event attempt count changed before claim")
-            availability_alert = observability_runtime.wait_for_alert(
+            availability_observation = observability_runtime.wait_for_alert_observation(
                 "HooklaneWorkerUnavailable",
                 {"pending", "firing"},
                 timeout_seconds=60,
             )
+            availability_alert = availability_observation["state"]
             backlog_alert = observability_runtime.wait_for_alert(
                 "HooklaneQueueBacklogGrowing",
                 {"pending", "firing"},
@@ -399,6 +479,15 @@ def run_drill() -> None:
                 "HooklaneOldestEventTooOld",
                 {"pending", "firing"},
                 timeout_seconds=60,
+            )
+            write_normalized_worker_signal(
+                normalized_output,
+                event_id=event_id,
+                availability_observation=availability_observation,
+                available_instances=available_instances,
+                signal_id=normalized_signal_id,
+                correlation_id=normalized_correlation_id,
+                observed_at=normalized_observed_at,
             )
         finally:
             if worker_scaled_down:
@@ -482,13 +571,28 @@ def run_drill() -> None:
         )
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--normalized-output", type=Path)
+    parser.add_argument("--normalized-signal-id")
+    parser.add_argument("--normalized-correlation-id")
+    parser.add_argument("--normalized-observed-at")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     owned_cluster = kind_runtime.CLUSTER_NAME not in kind_runtime.clusters()
     passed = True
     try:
         if owned_cluster:
             kind_runtime.cluster_up()
-        run_drill()
+        run_drill(
+            normalized_output=args.normalized_output,
+            normalized_signal_id=args.normalized_signal_id,
+            normalized_correlation_id=args.normalized_correlation_id,
+            normalized_observed_at=args.normalized_observed_at,
+        )
     except (
         OSError,
         RuntimeError,

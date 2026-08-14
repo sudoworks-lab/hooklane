@@ -305,12 +305,20 @@ def set_mock_sink_mode(mode: str) -> None:
 
 
 def alert_states() -> dict[str, str]:
+    return {
+        name: observation["state"]
+        for name, observation in alert_observations().items()
+        if isinstance(observation.get("state"), str)
+    }
+
+
+def alert_observations() -> dict[str, dict[str, str]]:
     response = request_json(
         f"http://127.0.0.1:{PROMETHEUS_LOCAL_PORT}/api/v1/alerts"
     )
     data = response.get("data")
     alerts = data.get("alerts", []) if isinstance(data, dict) else []
-    states: dict[str, str] = {}
+    observations: dict[str, dict[str, str]] = {}
     for alert_object in alerts if isinstance(alerts, list) else []:
         if not isinstance(alert_object, dict):
             continue
@@ -318,8 +326,12 @@ def alert_states() -> dict[str, str]:
         state = alert_object.get("state")
         name = labels.get("alertname") if isinstance(labels, dict) else None
         if isinstance(name, str) and isinstance(state, str):
-            states[name] = state
-    return states
+            active_at = alert_object.get("activeAt")
+            observations[name] = {
+                "state": state,
+                "active_at": active_at if isinstance(active_at, str) else "",
+            }
+    return observations
 
 
 def wait_for_alert(
@@ -336,6 +348,27 @@ def wait_for_alert(
             return state
         time.sleep(2)
     fail(f"alert {alert_name} did not reach {sorted(expected_states)}; state={state}")
+
+
+def wait_for_alert_observation(
+    alert_name: str,
+    expected_states: set[str],
+    *,
+    timeout_seconds: float = 60,
+) -> dict[str, str]:
+    deadline = time.monotonic() + timeout_seconds
+    observation = {"state": "inactive", "active_at": ""}
+    while time.monotonic() < deadline:
+        observation = alert_observations().get(alert_name, observation)
+        if observation.get("state") in expected_states:
+            if not observation.get("active_at"):
+                fail(f"alert {alert_name} has no observed active timestamp")
+            return observation
+        time.sleep(2)
+    fail(
+        f"alert {alert_name} did not reach {sorted(expected_states)}; "
+        f"state={observation.get('state', 'inactive')}"
+    )
 
 
 def loaded_alert_names() -> set[str]:
