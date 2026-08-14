@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Callable
 import json
 from pathlib import Path
 import subprocess
 import time
-from typing import Any, Never, cast
+from typing import Any, Literal, Never, cast
 
 import kind_e2e
 import kind_runtime
 import observability_runtime
+from hooklane.observability.normalized_signal import (
+    DeliveryFailureRateObservation,
+    normalize_delivery_failure_rate,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,10 +26,25 @@ FAILURE_METRIC = (
     'sum(hooklane_delivery_outcomes_total{service="worker",'
     'outcome=~"retry_scheduled|dead_lettered|pending|failure"})'
 )
+FAILURE_RATE_METRIC = (
+    'sum(rate(hooklane_delivery_outcomes_total{service="worker",'
+    'outcome=~"retry_scheduled|dead_lettered|pending|failure"}[30s]))'
+    ' / clamp_min(sum(rate(hooklane_delivery_outcomes_total{service="worker"}[30s])), '
+    '0.000000001)'
+)
 RETRY_METRIC = 'sum(hooklane_retry_scheduled_total{service="worker"})'
 QUEUE_METRIC = 'max(hooklane_queue_depth{service=~"api|worker"})'
 OLDEST_METRIC = 'max(hooklane_oldest_queued_event_age_seconds{service=~"api|worker"})'
 PENDING_METRIC = 'sum(hooklane_pending_messages{service="worker"})'
+FAILURE_RATE_THRESHOLD = 0.20
+FAILURE_RATE_WINDOW_SECONDS = 30.0
+FAILURE_RATE_HOLD_SECONDS = 10.0
+NORMALIZED_SOURCE_REF = "docs/incidents/downstream-5xx.md"
+NORMALIZED_EVIDENCE_REFS = [
+    "docs/incidents/downstream-5xx.md",
+    "docs/runbooks/HooklaneDeliveryFailureRateHigh.md",
+    "docs/runbooks/HooklaneRetryRateHigh.md",
+]
 LOG_FIELDS = frozenset(
     {
         "timestamp",
@@ -239,7 +259,59 @@ def verify_incident_links() -> None:
         fail("delivery failure Runbook does not link back to the incident drill")
 
 
-def run_drill() -> None:
+def ops_captured_at(timestamp: str) -> str:
+    """Adapt Prometheus alert timestamps to the ops manifest's millisecond contract."""
+
+    if "." not in timestamp:
+        return timestamp
+    base, fraction = timestamp[:-1].split(".", 1)
+    return f"{base}.{fraction[:3].ljust(3, '0')}Z"
+
+
+def write_normalized_delivery_failure_signal(
+    output_path: Path | None,
+    *,
+    injected_event_id: str,
+    failure_alert_observation: dict[str, str],
+    failure_rate: float,
+    signal_id: str | None = None,
+    correlation_id: str | None = None,
+    observed_at: str | None = None,
+) -> None:
+    if output_path is None:
+        return
+    resolved_path = output_path.resolve()
+    if resolved_path.is_relative_to(ROOT):
+        fail("normalized output must be outside the Hooklane repository")
+    active_at = observed_at or failure_alert_observation.get("active_at", "")
+    alert_state = failure_alert_observation.get("state", "")
+    if not active_at or alert_state not in {"pending", "firing"}:
+        fail("normalized output requires an observed delivery failure alert state and timestamp")
+    observation = DeliveryFailureRateObservation(
+        signal_id=signal_id or f"downstream-5xx-{injected_event_id}",
+        observed_at=active_at,
+        correlation_id=correlation_id or injected_event_id,
+        alert_state=cast(Literal["pending", "firing"], alert_state),
+        failure_rate=failure_rate,
+        threshold=FAILURE_RATE_THRESHOLD,
+        window_seconds=FAILURE_RATE_WINDOW_SECONDS,
+        required_duration_seconds=FAILURE_RATE_HOLD_SECONDS,
+        source_ref=NORMALIZED_SOURCE_REF,
+        captured_at=ops_captured_at(active_at),
+        evidence_refs=NORMALIZED_EVIDENCE_REFS,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(normalize_delivery_failure_rate(observation))
+    print(f"[ok] normalized delivery failure-rate signal written to {output_path}")
+
+
+def run_drill(
+    *,
+    normalized_output: Path | None = None,
+    normalized_signal_id: str | None = None,
+    normalized_correlation_id: str | None = None,
+    normalized_observed_at: str | None = None,
+) -> None:
     kind_runtime.deploy()
     kind_e2e.deploy_e2e_release()
     kind_runtime.helm_test()
@@ -280,10 +352,16 @@ def run_drill() -> None:
             )
             wait_metric(QUEUE_METRIC, lambda value: value >= 1, "queue depth >= 1")
             wait_metric(OLDEST_METRIC, lambda value: value > 0, "oldest age > 0")
-            delivery_alert = observability_runtime.wait_for_alert(
+            delivery_alert_observation = observability_runtime.wait_for_alert_observation(
                 "HooklaneDeliveryFailureRateHigh",
                 {"pending", "firing"},
                 timeout_seconds=60,
+            )
+            delivery_alert = delivery_alert_observation["state"]
+            failure_rate = wait_metric(
+                FAILURE_RATE_METRIC,
+                lambda value: value > FAILURE_RATE_THRESHOLD,
+                "delivery failure rate > 20 percent",
             )
             retry_alert = observability_runtime.wait_for_alert(
                 "HooklaneRetryRateHigh",
@@ -291,6 +369,15 @@ def run_drill() -> None:
                 timeout_seconds=60,
             )
             verify_failure_logs(injected_ids)
+            write_normalized_delivery_failure_signal(
+                normalized_output,
+                injected_event_id=injected_ids[0],
+                failure_alert_observation=delivery_alert_observation,
+                failure_rate=failure_rate,
+                signal_id=normalized_signal_id,
+                correlation_id=normalized_correlation_id,
+                observed_at=normalized_observed_at,
+            )
         finally:
             kind_e2e.configure_sink_helm("accept", 0)
 
@@ -334,13 +421,28 @@ def run_drill() -> None:
         )
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--normalized-output", type=Path)
+    parser.add_argument("--normalized-signal-id")
+    parser.add_argument("--normalized-correlation-id")
+    parser.add_argument("--normalized-observed-at")
+    return parser.parse_args(argv)
+
+
 def main() -> int:
+    args = parse_args()
     owned_cluster = kind_runtime.CLUSTER_NAME not in kind_runtime.clusters()
     passed = True
     try:
         if owned_cluster:
             kind_runtime.cluster_up()
-        run_drill()
+        run_drill(
+            normalized_output=args.normalized_output,
+            normalized_signal_id=args.normalized_signal_id,
+            normalized_correlation_id=args.normalized_correlation_id,
+            normalized_observed_at=args.normalized_observed_at,
+        )
     except (
         OSError,
         RuntimeError,

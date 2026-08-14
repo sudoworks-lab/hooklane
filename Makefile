@@ -238,7 +238,11 @@ observability-smoke: observability-validate alert-rules-check
 
 incident-downstream-5xx: images-build observability-images chart-validate alert-rules-check
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
-	@$(PYTHON) scripts/incident_downstream_5xx.py
+	@PYTHONPATH=src $(PYTHON) scripts/incident_downstream_5xx.py \
+		$(if $(NORMALIZED_OUTPUT),--normalized-output "$(NORMALIZED_OUTPUT)",) \
+		$(if $(NORMALIZED_SIGNAL_ID),--normalized-signal-id "$(NORMALIZED_SIGNAL_ID)",) \
+		$(if $(NORMALIZED_CORRELATION_ID),--normalized-correlation-id "$(NORMALIZED_CORRELATION_ID)",) \
+		$(if $(NORMALIZED_OBSERVED_AT),--normalized-observed-at "$(NORMALIZED_OBSERVED_AT)",)
 
 incident-redis-outage: images-build observability-images chart-validate alert-rules-check
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }

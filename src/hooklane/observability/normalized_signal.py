@@ -1,4 +1,4 @@
-"""Deterministic Hooklane worker availability normalization."""
+"""Deterministic Hooklane operational-signal normalization."""
 
 from __future__ import annotations
 
@@ -93,6 +93,59 @@ class WorkerUnavailableObservation(BaseModel):
         return self
 
 
+class DeliveryFailureRateObservation(BaseModel):
+    """Structured evidence collected after the delivery failure-rate alert is observed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    signal_id: str = Field(pattern=_IDENTIFIER.pattern)
+    observed_at: str = Field(pattern=_TIMESTAMP.pattern)
+    correlation_id: str = Field(pattern=_IDENTIFIER.pattern)
+    alert_state: Literal["pending", "firing"]
+    failure_rate: float = Field(ge=0, le=1)
+    threshold: float = Field(ge=0, le=1)
+    window_seconds: float = Field(gt=0)
+    required_duration_seconds: float = Field(ge=0)
+    source_ref: str = Field(pattern=_REFERENCE.pattern)
+    captured_at: str | None = Field(default=None, pattern=_TIMESTAMP.pattern)
+    evidence_refs: list[SafeReference] = Field(min_length=1)
+
+    @field_validator("signal_id", "correlation_id")
+    @classmethod
+    def validate_identifier(cls, value: str, info: Any) -> str:
+        return _safe_text(value, _IDENTIFIER, info.field_name)
+
+    @field_validator("source_ref")
+    @classmethod
+    def validate_source_ref(cls, value: str) -> str:
+        return _safe_text(value, _REFERENCE, "source_ref")
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def validate_evidence_refs(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("evidence_refs must not contain duplicates")
+        return [_safe_text(item, _REFERENCE, "evidence_ref") for item in value]
+
+    @field_validator(
+        "failure_rate",
+        "threshold",
+        "window_seconds",
+        "required_duration_seconds",
+    )
+    @classmethod
+    def validate_finite_measurements(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("scalar measurements must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def validate_failure_rate_evidence(self) -> DeliveryFailureRateObservation:
+        if self.failure_rate <= self.threshold:
+            raise ValueError("failure_rate must be above the observed alert threshold")
+        return self
+
+
 def build_worker_unavailable_signal(
     observation: WorkerUnavailableObservation | Mapping[str, object],
 ) -> dict[str, object]:
@@ -141,6 +194,61 @@ def normalize_worker_unavailable(
     """Return canonical JSON bytes for the worker-stop availability observation."""
 
     signal = build_worker_unavailable_signal(observation)
+    return (
+        json.dumps(signal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        .encode("utf-8")
+        + b"\n"
+    )
+
+
+def build_delivery_failure_rate_signal(
+    observation: DeliveryFailureRateObservation | Mapping[str, object],
+) -> dict[str, object]:
+    """Build a normalized delivery failure-rate signal without I/O or clock access."""
+
+    validated = DeliveryFailureRateObservation.model_validate(observation)
+    source: dict[str, object] = {
+        "system": "hooklane",
+        "scenario": "downstream-5xx",
+        "source_ref": validated.source_ref,
+        "correlation_id": validated.correlation_id,
+        "synthetic": True,
+    }
+    if validated.captured_at is not None:
+        source["captured_at"] = validated.captured_at
+
+    return {
+        "kind": "normalized_operational_signal",
+        "schema_version": "1.0",
+        "signal_id": validated.signal_id,
+        "signal_type": "delivery.failure_rate",
+        "detector_id": "HooklaneDeliveryFailureRateHigh",
+        "observed_at": validated.observed_at,
+        "scope": {"service": "hooklane", "components": ["worker"]},
+        "evaluation": {
+            "state": validated.alert_state,
+            "required_duration_seconds": validated.required_duration_seconds,
+            "window_seconds": validated.window_seconds,
+        },
+        "observation": {
+            "kind": "scalar",
+            "measurement": "ratio",
+            "value": validated.failure_rate,
+            "unit": "ratio",
+            "comparison": "gt",
+            "threshold": validated.threshold,
+        },
+        "source": source,
+        "evidence_refs": list(validated.evidence_refs),
+    }
+
+
+def normalize_delivery_failure_rate(
+    observation: DeliveryFailureRateObservation | Mapping[str, object],
+) -> bytes:
+    """Return canonical JSON bytes for a delivery failure-rate observation."""
+
+    signal = build_delivery_failure_rate_signal(observation)
     return (
         json.dumps(signal, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         .encode("utf-8")
