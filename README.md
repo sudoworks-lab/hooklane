@@ -179,6 +179,7 @@ workflowはread-only permission、full commit SHAで固定したaction、secret�
 - [v0.1.1 release notes](docs/releases/v0.1.1.md)
 - [ADR](docs/adr/0001-redis-streams-at-least-once.md)
 - [AWS scope extension ADR](docs/adr/0005-aws-scope-extension.md)
+- [Python language selection ADR](docs/adr/0006-language-selection-python.md)
 
 ## cleanup
 
