@@ -23,7 +23,8 @@ UNIT_TESTS := tests/unit tests/test_loop_runner.py tests/test_goal_loop_safety.p
 	observability-images observability-validate observability-up \
 	observability-smoke-base observability-down alert-rules-check observability-smoke \
 	incident-downstream-5xx incident-redis-outage incident-worker-stop incident-smoke \
-	terraform-validate worker-ecs-health-repro
+	terraform-validate worker-ecs-health-repro \
+	cloudflare-test cloudflare-local-flow cloudflare-check
 
 doctor:
 	@test -n "$(PYTHON)" || { echo "[fail] Python: neither python nor python3 was found"; exit 1; }
@@ -57,6 +58,18 @@ test-integration:
 		$(or $(TESTS),tests/integration)
 
 test: test-unit test-integration
+
+cloudflare-test:
+	@cd cloudflare && uv lock --check
+	@cd cloudflare && uv run pytest
+	@cd cloudflare && uv run ruff check src tests
+	@cd cloudflare && uv run mypy src
+
+cloudflare-local-flow:
+	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no Cloudflare flow interpreter was found"; exit 1; }
+	@$(TEST_PYTHON) scripts/cloudflare_local_flow.py
+
+cloudflare-check: cloudflare-test cloudflare-local-flow
 
 docs-core-check:
 	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no docs interpreter was found"; exit 1; }

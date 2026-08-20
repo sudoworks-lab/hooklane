@@ -1,0 +1,11 @@
+{
+  "name": "hooklane-cloudflare-spike-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "22.22.2"
+  },
+  "devDependencies": {
+    "wrangler": "4.124.0"
+  }
+}

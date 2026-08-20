@@ -8,6 +8,9 @@ logs/
 # 依存・キャッシュ・ビルド成果物
 node_modules/
 .venv/
+.wrangler/
+cloudflare/python_modules/
+cloudflare/.venv-workers/
 __pycache__/
 .pytest_cache/
 .mypy_cache/

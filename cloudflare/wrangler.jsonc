@@ -1,0 +1,39 @@
+{
+  "name": "hooklane-cloudflare-spike",
+  "main": "src/worker.py",
+  "workers_dev": false,
+  "compatibility_date": "2026-08-20",
+  "compatibility_flags": ["python_workers"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hooklane-spike-db",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "DELIVERY_QUEUE",
+        "queue": "hooklane-spike-delivery"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "hooklane-spike-delivery",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 4,
+        "dead_letter_queue": "hooklane-spike-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "vars": {
+    "MOCK_SINK_URL": "http://127.0.0.1:18081/internal/deliveries",
+    "SPIKE_TEST_MODE": "false"
+  }
+}

@@ -82,6 +82,25 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - receipt/diagnosticの不整合はapplication障害ではない。旧validatorがdelete planの`after=null`を`.get()`してAttributeErrorになったこと、cleanup-recoveryが本体receipt/diagnosticをロードせず初期false/nullを残したこと、diagnosticのcleanup statusを更新しなかったことがconfirmed root causeである
 - current harnessのfixtureは既存v1.4 85件と今回追加20件が全PASSで、nullable plan fallback、cleanup `after=null`、full-success coherence、failure/recovery atomic receipt、redactionを検証した
 
+## post-P0 Cloudflare local spike
+
+2026-08-20のbaseline HEAD `aa0d413b4255899bb29842e7f38b74e6f04a7c08`から始めたuncommitted current working treeで、既存Redis backendを変更せず`cloudflare/`へlocal-only spikeを分離した。この節はv0.1.1 tag、Hosted CI、cloud productionの根拠を置き換えない。
+
+- `make cloudflare-check`: Cloudflare-specific failure/configuration tests 27件、Cloudflare sourceのRuff、strict mypy 6 files、Wrangler 4.124.0/workerd local flowがsuccess
+- local flow: default `SPIKE_TEST_MODE=false`ではlocal-only interfaceが404、明示override後のliveness 200／D1 readiness 200、normal deliveryは`delivered`／attempt 1、20 concurrent same-key requestは1 logical event、conflictは409、D1 acceptance faultとpayload chunk transaction faultは503、Queue send fault後の20 concurrent outbox repairは1 dispatch／send count 1／`delivered`、outbox duplicateはterminal suppressionでattempt 1を維持、delivery transition faultは同一eventのsink calls 2／attempt 2、dead-letter／delivered terminal redeliveryはsinkを再実行せず、stale failure／successはcurrent stateを上書きせず、2,065,536-byte payloadはD1 chunkから`delivered`、mock sink 503継続時はattempt 5で`dead_letter`
+- root `make test-unit`: 201 passed。Cloudflare public request schema、status vocabulary、Redis／Cloudflare portfolio comparisonのcontract testを含む
+- root `make test-integration`: isolated disposable Redisを使う51件がpassedし、test container cleanupがsuccess
+- root `make lint`: success
+- root `make typecheck`: strict mypy 104 source filesでsuccess
+- `make docs-check`: success
+- `git diff --check`: success
+- `make security-secret`: Git historyとworking treeのsecret findingは0
+- Durable ObjectsとR2は不採用。D1 unique constraintでconcurrent idempotencyを満たし、Queueへpayloadではなく`event_id`だけを送る。payloadは1.5 MB以下のD1 chunk rowへ分割してevent／outboxと同じacceptance transactionへ含め、2 MB single-row gapを解消する
+- outbox repairはD1 compare-and-setの30秒leaseでownerをclaimする。deliveryもD1 delivery token／leaseでattempt ownerをclaimし、terminal duplicateをsinkなしでack、stale transitionをCASで抑止する。lease expiry後のsame event ID再送を許容し、strict exactly-onceは主張しない
+- Redis StreamsとCloudflare primitivesのingress、state、queue、idempotency、retry、DLQ、atomicity、duplicate、payload、recovery、observability、operations、reproduction、limitsは[`REDIS_CLOUDFLARE_COMPARISON.md`](REDIS_CLOUDFLARE_COMPARISON.md)で比較する
+- credential、Cloudflare account、remote binding、cloud resource、deployment、production trafficは使用していない
+- `make doctor`はDocker client／server 29.6.2対pin 29.5.3、Compose 5.3.1対pin 5.1.4の既知driftだけでfailure。pinは変更していない。current Compose、kind E2E、observability、incident runtime、full security scanはこのpost-P0 working treeでは未実行であり、過去のv0.1 evidenceを再検証結果として扱わない
+
 ## 未確認事項
 
 - cloud production、実在する外部downstream、multi-node／multi-zone availability、long-running load、本番traffic

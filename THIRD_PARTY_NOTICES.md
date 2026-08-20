@@ -24,6 +24,12 @@ localとCIの検証workflowはTerraform、kind、Helm、Gitleaks、OSV-Scanner�
 
 Terraform v1.15.5はHashiCorp公式の`terraform_1.15.5_linux_amd64.zip`を`~/.local/bin`へ取得する。CI installerは同じ公式archiveのSHA-256を、対応する`terraform_1.15.5_SHA256SUMS`から選択して検証してから展開し、sudoやsystem-global installを使わない。確認対象は[toolchain.toml](toolchain.toml)と[scripts/install_ci_tools.py](scripts/install_ci_tools.py)である。
 
+## Cloudflare local spike
+
+local-only Cloudflare spikeはPython Workers runtime SDK、FastAPI、Pydantic、Pywrangler、Wrangler／workerdを参照する。Python側のdirect dependencyとhost lockは[cloudflare/pyproject.toml](cloudflare/pyproject.toml)と[cloudflare/uv.lock](cloudflare/uv.lock)、Pyodide runtime wheelは[cloudflare/pylock.toml](cloudflare/pylock.toml)、Node.jsとWranglerは[cloudflare/package.json](cloudflare/package.json)、[cloudflare/package-lock.json](cloudflare/package-lock.json)、[cloudflare/.nvmrc](cloudflare/.nvmrc)を正本とする。
+
+dependency、`python_modules`、Wrangler、workerd、local D1 stateはrepositoryへvendorせず、local validation時にlockからinstallまたは生成する。Cloudflare account、credential、remote resource、cloud deploymentはこのvalidationに使用しない。license名とnoticeは各lockが示すexact upstream versionで確認する。
+
 ## GitHub Actions
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml)は`actions/checkout`、`actions/setup-python`、`actions/upload-artifact`をfull commit SHAで参照する。action implementationはrepositoryへvendorしない。licenseとnoticeは該当するupstream revisionで確認する。
@@ -40,6 +46,8 @@ Hooklane v0.1.1はsource-onlyで公開している。prebuilt container image、
 - kind nodeとvalidation tool: [toolchain.toml](toolchain.toml)
 - Terraform CLI: [toolchain.toml](toolchain.toml)、[scripts/install_ci_tools.py](scripts/install_ci_tools.py)、HashiCorp公式archiveとSHA256SUMS
 - security scanner: [security-policy.json](security-policy.json)
+- Cloudflare Python／Pyodide package: [cloudflare/pyproject.toml](cloudflare/pyproject.toml)、[cloudflare/uv.lock](cloudflare/uv.lock)、[cloudflare/pylock.toml](cloudflare/pylock.toml)
+- Cloudflare Node.js／Wrangler tool: [cloudflare/package.json](cloudflare/package.json)、[cloudflare/package-lock.json](cloudflare/package-lock.json)、[cloudflare/.nvmrc](cloudflare/.nvmrc)
 - GitHub Actions: [.github/workflows/ci.yml](.github/workflows/ci.yml)
 
 後続revisionでは、これらのfileとexact upstream versionのlicense、noticeを合わせて確認する。
