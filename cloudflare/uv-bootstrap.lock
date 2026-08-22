@@ -1,0 +1,3 @@
+# Linux x86_64 wheel published for uv 0.12.3 on PyPI.
+uv==0.12.3 \
+    --hash=sha256:1482d1462b1aecd18ee33627363fe1c63d6a194f12d40d37efc446d9e0d800a1

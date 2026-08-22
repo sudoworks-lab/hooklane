@@ -10,6 +10,10 @@ GRAFANA_IMAGE := grafana/grafana@sha256:5dad0df181cb644a14e13617b913b261a54f7d4f
 TARGET ?= image
 QUALITY_PATHS := src scripts tests
 UNIT_TESTS := tests/unit tests/test_loop_runner.py tests/test_goal_loop_safety.py
+CLOUDFLARE_CI_UV := $(abspath cloudflare/.venv-uv/bin/uv)
+CLOUDFLARE_CI_HARNESS_PYTHON := $(abspath cloudflare/.venv-harness/bin/python)
+CLOUDFLARE_UV ?= uv
+CLOUDFLARE_HARNESS_PYTHON ?= $(TEST_PYTHON)
 
 .PHONY: doctor smoke-fast lint typecheck test-unit test-integration test verify \
 	security security-secret security-dependency security-filesystem security-image \
@@ -24,6 +28,7 @@ UNIT_TESTS := tests/unit tests/test_loop_runner.py tests/test_goal_loop_safety.p
 	observability-smoke-base observability-down alert-rules-check observability-smoke \
 	incident-downstream-5xx incident-redis-outage incident-worker-stop incident-smoke \
 	terraform-validate worker-ecs-health-repro \
+	cloudflare-ci-setup cloudflare-ci-check cloudflare-clean-room \
 	cloudflare-test cloudflare-local-flow cloudflare-check
 
 doctor:
@@ -60,16 +65,30 @@ test-integration:
 test: test-unit test-integration
 
 cloudflare-test:
-	@cd cloudflare && uv lock --check
-	@cd cloudflare && uv run pytest
-	@cd cloudflare && uv run ruff check src tests
-	@cd cloudflare && uv run mypy src
+	@cd cloudflare && $(CLOUDFLARE_UV) lock --check
+	@cd cloudflare && $(CLOUDFLARE_UV) run pytest
+	@cd cloudflare && $(CLOUDFLARE_UV) run ruff check src tests
+	@cd cloudflare && $(CLOUDFLARE_UV) run mypy src
 
 cloudflare-local-flow:
-	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no Cloudflare flow interpreter was found"; exit 1; }
-	@$(TEST_PYTHON) scripts/cloudflare_local_flow.py
+	@test -n "$(CLOUDFLARE_HARNESS_PYTHON)" || { echo "[fail] Python: no Cloudflare flow interpreter was found"; exit 1; }
+	@HOOKLANE_CLOUDFLARE_UV="$(CLOUDFLARE_UV)" \
+		$(CLOUDFLARE_HARNESS_PYTHON) scripts/cloudflare_local_flow.py
 
 cloudflare-check: cloudflare-test cloudflare-local-flow
+
+cloudflare-ci-setup:
+	@test -n "$(PYTHON)" || { echo "[fail] Python: no Cloudflare CI bootstrap interpreter was found"; exit 1; }
+	@$(PYTHON) scripts/cloudflare_ci_setup.py
+
+cloudflare-ci-check: cloudflare-ci-setup
+	@$(MAKE) cloudflare-check \
+		CLOUDFLARE_UV="$(CLOUDFLARE_CI_UV)" \
+		CLOUDFLARE_HARNESS_PYTHON="$(CLOUDFLARE_CI_HARNESS_PYTHON)"
+
+cloudflare-clean-room:
+	@test -n "$(PYTHON)" || { echo "[fail] Python: no clean-room interpreter was found"; exit 1; }
+	@$(PYTHON) scripts/cloudflare_clean_room.py
 
 docs-core-check:
 	@test -n "$(TEST_PYTHON)" || { echo "[fail] Python: no docs interpreter was found"; exit 1; }

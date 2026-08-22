@@ -96,6 +96,16 @@ payload、raw Idempotency-Key、credential、downstream exception textは出力�
 
 `make cloudflare-local-flow`はWrangler 4.124.0/workerdのlocal D1とQueue、既存mock sinkを用い、tracked defaultから明示的にtest modeをoverrideしてHTTP 202/404/409/503、normal delivery、20 concurrent idempotency、20 concurrent outbox repair、outbox duplicate suppression、D1 single-row limitを超えるpayload delivery、mock sink 503継続時のattempt 5 terminal dead-letter、terminal redelivery、concurrent stale ownership、delivery transition failure boundaryを検証する。
 
+## CI integration and clean-room
+
+GitHub Actionsでは`quality`と専用`cloudflare` jobをpull request／main pushの独立preflight gateとして実行し、`e2e-kind`は両方の成功を`needs`に持つ。Cloudflare jobはfixed `ubuntu-24.04`、bounded timeout、top-level `contents: read`を継承し、approved revisionのexact commit SHAに固定したcheckout、setup-node、setup-pythonだけを使う。secret、Cloudflare credential、remote flag、deploy commandは持たず、`make cloudflare-check`のfailureをworkflow failureにする。
+
+Node 22.22.2は`.nvmrc`、Wrangler 4.124.0は`package-lock.json`、root harness Python 3.12.3はroot `.python-version`、Cloudflare Pythonは`cloudflare/.python-version`と`pyproject.toml`の`3.13.*`を正本とする。uv 0.12.3はPyPIのLinux x86_64 wheel SHA-256を`uv-bootstrap.lock`に固定し、floating installerやrunner preinstallを使わない。root mock sinkはroot lockのminimal subset、Cloudflare側は`uv sync --locked`、Node側は`npm ci`で別々に構築する。
+
+`make cloudflare-clean-room`はsource-only copy、一時HOME、一時cacheから`make cloudflare-ci-check`を実行し、developer machineのvenv、`node_modules`、`python_modules`、`.wrangler`、global uvを使わず同じgateへ到達する。local flow内のnpm、uv、Wrangler、workerdも一時HOMEを使い、Cloudflare credential環境を継承せずWrangler telemetryを無効化する。local contractは検証済みだが、追加jobのremote GitHub Actions実行はpush前のため未確認である。
+
+local contractはMake recipeとbootstrap sourceのaccidental driftを検出するが、同じPRからverifierも変更できるため外部trust boundaryではない。base branch CODEOWNERSとGitHub `main` rulesetの責務、single-maintainer bypass、未確認のSettingsは[CI trust model](CI_TRUST_MODEL.md)を正本とする。
+
 ## Next gate
 
 portfolio spikeではD1 payload chunking、outbox lease、DLQ二層差、observability semantic mappingまでを確定した。productionへ進む前に、supported payload maximum、provider DLQのreplay／D1 reconciliation、Cloudflare-native telemetry実装、Python Workers beta許容、remote resource configuration／security／costを決定する。remote applyやdeploymentは別の明示承認が必要である。

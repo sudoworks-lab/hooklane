@@ -11,6 +11,8 @@ node_modules/
 .wrangler/
 cloudflare/python_modules/
 cloudflare/.venv-workers/
+cloudflare/.venv-harness/
+cloudflare/.venv-uv/
 __pycache__/
 .pytest_cache/
 .mypy_cache/

@@ -26,13 +26,13 @@ Terraform v1.15.5はHashiCorp公式の`terraform_1.15.5_linux_amd64.zip`を`~/.l
 
 ## Cloudflare local spike
 
-local-only Cloudflare spikeはPython Workers runtime SDK、FastAPI、Pydantic、Pywrangler、Wrangler／workerdを参照する。Python側のdirect dependencyとhost lockは[cloudflare/pyproject.toml](cloudflare/pyproject.toml)と[cloudflare/uv.lock](cloudflare/uv.lock)、Pyodide runtime wheelは[cloudflare/pylock.toml](cloudflare/pylock.toml)、Node.jsとWranglerは[cloudflare/package.json](cloudflare/package.json)、[cloudflare/package-lock.json](cloudflare/package-lock.json)、[cloudflare/.nvmrc](cloudflare/.nvmrc)を正本とする。
+local-only Cloudflare spikeはPython Workers runtime SDK、FastAPI、Pydantic、Pywrangler、Wrangler／workerdを参照する。Python側のdirect dependencyとhost lockは[cloudflare/pyproject.toml](cloudflare/pyproject.toml)と[cloudflare/uv.lock](cloudflare/uv.lock)、Pyodide runtime wheelは[cloudflare/pylock.toml](cloudflare/pylock.toml)、Node.jsとWranglerは[cloudflare/package.json](cloudflare/package.json)、[cloudflare/package-lock.json](cloudflare/package-lock.json)、[cloudflare/.nvmrc](cloudflare/.nvmrc)を正本とする。CI bootstrapのuv wheelとroot mock sink subsetは[cloudflare/uv-bootstrap.lock](cloudflare/uv-bootstrap.lock)と[cloudflare/harness-requirements.lock](cloudflare/harness-requirements.lock)へ固定する。
 
 dependency、`python_modules`、Wrangler、workerd、local D1 stateはrepositoryへvendorせず、local validation時にlockからinstallまたは生成する。Cloudflare account、credential、remote resource、cloud deploymentはこのvalidationに使用しない。license名とnoticeは各lockが示すexact upstream versionで確認する。
 
 ## GitHub Actions
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml)は`actions/checkout`、`actions/setup-python`、`actions/upload-artifact`をfull commit SHAで参照する。action implementationはrepositoryへvendorしない。licenseとnoticeは該当するupstream revisionで確認する。
+[.github/workflows/ci.yml](.github/workflows/ci.yml)は`actions/checkout`、`actions/setup-node`、`actions/setup-python`、`actions/upload-artifact`をapproved revisionのexact commit SHAで参照し、local CI contractもrepository名とSHAの組を完全一致で検証する。action implementationはrepositoryへvendorしない。licenseとnoticeは該当するupstream revisionで確認する。
 
 ## 配布に関する注記
 

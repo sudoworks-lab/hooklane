@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up pinned Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
         with:
@@ -40,15 +41,9 @@ jobs:
           make ci-setup
           terraform version
           printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Determine immutable source image identity
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Determine checked-out source image identity
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            SOURCE_SHA="$PR_HEAD_SHA"
-          else
-            SOURCE_SHA="$GITHUB_SHA"
-          fi
+          SOURCE_SHA="$GITHUB_SHA"
           if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "[fail] source commit SHA must be 40 lowercase hexadecimal characters"
             exit 1
@@ -62,10 +57,38 @@ jobs:
           make image-contract IMAGE_TAG="$IMAGE_TAG"
           make verify IMAGE_TAG="$IMAGE_TAG"
 
+  cloudflare:
+    name: Cloudflare local backend gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903
+        with:
+          node-version-file: cloudflare/.nvmrc
+          package-manager-cache: false
+      - name: Set up root harness Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
+        with:
+          python-version-file: .python-version
+          check-latest: false
+      - name: Bootstrap isolated pinned environments
+        run: make cloudflare-ci-setup
+      - name: Run Cloudflare local backend gate
+        run: |
+          make cloudflare-check \
+            CLOUDFLARE_UV="$PWD/cloudflare/.venv-uv/bin/uv" \
+            CLOUDFLARE_HARNESS_PYTHON="$PWD/cloudflare/.venv-harness/bin/python"
+
   e2e-kind:
     name: kind delivery and recovery E2E
     needs:
       - quality
+      - cloudflare
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -73,6 +96,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up pinned Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
         with:
@@ -82,15 +106,9 @@ jobs:
         run: |
           make ci-setup
           printf '%s\n' "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Determine immutable source image identity
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Determine checked-out source image identity
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            SOURCE_SHA="$PR_HEAD_SHA"
-          else
-            SOURCE_SHA="$GITHUB_SHA"
-          fi
+          SOURCE_SHA="$GITHUB_SHA"
           if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "[fail] source commit SHA must be 40 lowercase hexadecimal characters"
             exit 1

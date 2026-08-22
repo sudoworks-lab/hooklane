@@ -56,6 +56,7 @@ PR #1のPR HEADは`f7d2db9822215ecb8ca81e335982fb47a5c019e8`であり、PR title
 - merge commit固有のpush-triggered CI結果は、tracked evidence上で独立確認済みとは扱わない
 - success時のfailure diagnostics uploadはskip、cleanupはsuccess
 - Node.js 20 deprecation annotationは現行workflowで発生していない
+- current workflowにはRedis/Kubernetesの`quality`と並列にCloudflare local backendの専用`cloudflare` gateを追加し、`e2e-kind`は両preflight成功後に実行する。この構成はlocal CI contractとclean-roomで検証したが、追加jobを含むremote GitHub Actions runはpush前のため未確認である
 
 Hosted CIはcloud production、本番traffic、AWS runtimeの証拠ではない。AWS revalidationのsource commitと証拠境界は、上記のAWS evidence scopeおよび[`docs/aws/runtime-evidence.json`](aws/runtime-evidence.json)を正本とし、current main自体をAWS-tested sourceとは扱わない。
 
@@ -84,7 +85,7 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 
 ## post-P0 Cloudflare local spike
 
-2026-08-20のbaseline HEAD `aa0d413b4255899bb29842e7f38b74e6f04a7c08`から始めたuncommitted current working treeで、既存Redis backendを変更せず`cloudflare/`へlocal-only spikeを分離した。この節はv0.1.1 tag、Hosted CI、cloud productionの根拠を置き換えない。
+source commit `ba46bf2e14f9f09bf43cc9dfccf24a85e41d80f6`は、既存Redis backendを変更せず`cloudflare/`へlocal-only spikeを分離した。この節はv0.1.1 tag、Hosted CI、cloud productionの根拠を置き換えない。
 
 - `make cloudflare-check`: Cloudflare-specific failure/configuration tests 27件、Cloudflare sourceのRuff、strict mypy 6 files、Wrangler 4.124.0/workerd local flowがsuccess
 - local flow: default `SPIKE_TEST_MODE=false`ではlocal-only interfaceが404、明示override後のliveness 200／D1 readiness 200、normal deliveryは`delivered`／attempt 1、20 concurrent same-key requestは1 logical event、conflictは409、D1 acceptance faultとpayload chunk transaction faultは503、Queue send fault後の20 concurrent outbox repairは1 dispatch／send count 1／`delivered`、outbox duplicateはterminal suppressionでattempt 1を維持、delivery transition faultは同一eventのsink calls 2／attempt 2、dead-letter／delivered terminal redeliveryはsinkを再実行せず、stale failure／successはcurrent stateを上書きせず、2,065,536-byte payloadはD1 chunkから`delivered`、mock sink 503継続時はattempt 5で`dead_letter`
@@ -100,6 +101,21 @@ scanner databaseとupstream advisoryは変化する。結果は検証したsnaps
 - Redis StreamsとCloudflare primitivesのingress、state、queue、idempotency、retry、DLQ、atomicity、duplicate、payload、recovery、observability、operations、reproduction、limitsは[`REDIS_CLOUDFLARE_COMPARISON.md`](REDIS_CLOUDFLARE_COMPARISON.md)で比較する
 - credential、Cloudflare account、remote binding、cloud resource、deployment、production trafficは使用していない
 - `make doctor`はDocker client／server 29.6.2対pin 29.5.3、Compose 5.3.1対pin 5.1.4の既知driftだけでfailure。pinは変更していない。current Compose、kind E2E、observability、incident runtime、full security scanはこのpost-P0 working treeでは未実行であり、過去のv0.1 evidenceを再検証結果として扱わない
+
+### 2026-08-21 Cloudflare CI integration
+
+- `.github/workflows/ci.yml`はpull requestとmain pushで`quality`／`cloudflare`を独立required gateとして実行し、`e2e-kind`は`needs: [quality, cloudflare]`で両方の成功後に開始する。全jobはfixed `ubuntu-24.04`とbounded timeoutを持ち、top-level `contents: read`を拡張しない
+- Cloudflare jobはfull commit SHAに固定したcheckout、setup-node、setup-pythonだけを使い、`.nvmrc`のNode 22.22.2とroot `.python-version`のPython 3.12.3から`make cloudflare-ci-setup`を実行した後、`make cloudflare-check`を直接required gateとして呼ぶ。checkoutはcredentialをpersistせず、Actions package cacheも使わない
+- `make cloudflare-ci-setup`はSHA-256を固定したPyPI Linux x86_64 wheelからuv 0.12.3を導入し、root mock sink用Python 3.12.3 minimal harnessとCloudflare Python 3.13環境を分離する。Cloudflare clean-roomではuv 0.12.3がCPython 3.13.15を解決した。Node dependencyは`package-lock.json`から`npm ci`、Cloudflare Python dependencyは`uv sync --locked`で導入する
+- `make cloudflare-clean-room`: Git管理対象と未ignore sourceだけのcopy、一時HOME／cache、global uvを含まないPATHからbootstrapし、Cloudflare tests 27件、Ruff、strict mypy 6 files、Wrangler 4.124.0/workerd local flowがsuccess。既存venv、`node_modules`、`python_modules`、`.wrangler`はcopyしていない
+- local `make cloudflare-check`: Cloudflare tests 27件、Ruff、strict mypy 6 files、real local flowがsuccess
+- targeted CI/control-plane contract tests: 49 passed。workflow／job／stepの構造的allowlistに加え、approved actionのexact SHA、canonical concurrency、checkout対象`GITHUB_SHA`によるimage identity、Cloudflare Make recipeのno-op化、bootstrapのfake make／`GITHUB_PATH` injection、CODEOWNERSのcontrol-plane coverageとself-ownershipをfailureとして検出する。`scripts/ci_contract.py`もsuccess
+- `.github/CODEOWNERS`はworkflow、Makefile、scripts、CI contract test、root／Cloudflare toolchain manifest・lockを`@sudoworks-lab`所有とする。repository-local contractとdigestはaccidental weakening向けdefense-in-depthであり、PRがverifierとexpected valueを同時変更できるため単独のtrust boundaryとは扱わない
+- desired GitHub governanceは[`CI_TRUST_MODEL.md`](CI_TRUST_MODEL.md)にpersonal public repository向けのmachine-readable ruleset specとして記録する。active `main` ruleset、required Code Owner review、stale approval dismissal、3 required checks、up-to-date branch、force-push／deletion protectionはGitHub Settingsで未変更・未確認であり、enforcement済みとは主張しない
+- pull requestではdefault checkoutのmerge commit `GITHUB_SHA`、main pushではpushed commit `GITHUB_SHA`を`IMAGE_TAG`へ使用し、同じPR-head tagが異なるmerge contentを指し得るambiguityを解消する
+- root regression: `make test-unit` 248 passed、`make test-integration` 51 passed、`make lint` success、`make typecheck` strict mypy 106 files success、`make docs-check` success、`make security-secret`はGit history／working treeともfinding 0
+- `make doctor`はDocker client／server 29.6.2対pin 29.5.3、Compose 5.3.1対pin 5.1.4の既知driftだけでfailure。pinは変更していない
+- secret、Cloudflare credential、remote D1／Queues、cloud write、deployment、production trafficは使用していない。追加jobを含むremote GitHub Actions runはpush前のため未確認であり、CI-integrated／local contract validatedまでを根拠とする
 
 ## 未確認事項
 

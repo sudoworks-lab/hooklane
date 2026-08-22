@@ -102,9 +102,12 @@ repository rootで次を実行する。
 make cloudflare-test
 make cloudflare-local-flow
 make cloudflare-check
+make cloudflare-clean-room
 ```
 
 `cloudflare-test`はprovider-neutral state machine、payload boundary、concurrent idempotency、concurrent repair、retry、DLQ、duplicate boundary、logging safetyを検証する。`cloudflare-local-flow`はtemporary D1とQueueをWrangler／workerdで起動し、既存mock sinkへ実配送した後、今回起動したprocessだけを停止する。Cloudflare account、credential、remote binding、cloud writeは使わない。
+
+`cloudflare-clean-room`はsource-only copyと隔離HOMEでpin付きtoolchain／dependency bootstrapから同じgateを再実行する。GitHub Actionsの専用`cloudflare` jobも`make cloudflare-check`をrequired gateとして直接呼び、Redis/Kubernetesの`quality`と両方が成功してから`e2e-kind`へ進む。これはCI-integrated／local contract validatedの根拠であり、push前のremote Actions成功やCloudflare productionを示さない。
 
 Redis側のcurrent validation入口は`make test-unit`、`make test-integration`、Compose／kind／observability／incident各targetである。Docker／Compose version driftがある環境ではpinを変更せず、runtime系は未確認として区別する。
 

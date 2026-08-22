@@ -23,6 +23,7 @@ CLOUDFLARE = ROOT / "cloudflare"
 WORKER_ORIGIN = "http://127.0.0.1:18787"
 SINK_ORIGIN = "http://127.0.0.1:18081"
 D1_ROW_LIMIT_BYTES = 2_000_000
+UV = os.environ.get("HOOKLANE_CLOUDFLARE_UV", "uv")
 
 
 class FlowError(RuntimeError):
@@ -140,9 +141,22 @@ def run_contract() -> dict[str, Any]:
     assert_port_available(18081)
     assert_port_available(18787)
     with tempfile.TemporaryDirectory(prefix="hooklane-cloudflare-flow-") as temporary:
+        tool_home = Path(temporary) / "home"
+        tool_home.mkdir()
+        environment = {
+            "HOME": str(tool_home),
+            "PATH": os.environ.get("PATH", os.defpath),
+            "PYTHONPATH": str(ROOT / "src"),
+            "WRANGLER_SEND_METRICS": "false",
+            "XDG_CACHE_HOME": str(Path(temporary) / "cache"),
+        }
+        for name in ("LANG", "LC_ALL", "SSL_CERT_DIR", "SSL_CERT_FILE"):
+            if name in os.environ:
+                environment[name] = os.environ[name]
         node_install = subprocess.run(
             ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
             cwd=CLOUDFLARE,
+            env=environment,
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -154,7 +168,7 @@ def run_contract() -> dict[str, Any]:
         persistence.mkdir()
         migration = subprocess.run(
             [
-                "uv",
+                UV,
                 "run",
                 "pywrangler",
                 "d1",
@@ -166,6 +180,7 @@ def run_contract() -> dict[str, Any]:
                 str(persistence),
             ],
             cwd=CLOUDFLARE,
+            env=environment,
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -176,8 +191,6 @@ def run_contract() -> dict[str, Any]:
 
         sink_log = Path(temporary) / "sink.log"
         worker_log = Path(temporary) / "worker.log"
-        environment = os.environ.copy()
-        environment["PYTHONPATH"] = str(ROOT / "src")
         with sink_log.open("wb") as sink_output, worker_log.open("wb") as worker_output:
             sink = subprocess.Popen(
                 [
@@ -200,7 +213,7 @@ def run_contract() -> dict[str, Any]:
             )
             worker = subprocess.Popen(
                 [
-                    "uv",
+                    UV,
                     "run",
                     "pywrangler",
                     "dev",
@@ -212,6 +225,7 @@ def run_contract() -> dict[str, Any]:
                     "--show-interactive-dev-session=false",
                 ],
                 cwd=CLOUDFLARE,
+                env=environment,
                 stdout=worker_output,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
@@ -234,7 +248,7 @@ def run_contract() -> dict[str, Any]:
                 stop_process(worker)
                 worker = subprocess.Popen(
                     [
-                        "uv",
+                        UV,
                         "run",
                         "pywrangler",
                         "dev",
@@ -248,6 +262,7 @@ def run_contract() -> dict[str, Any]:
                         "--show-interactive-dev-session=false",
                     ],
                     cwd=CLOUDFLARE,
+                    env=environment,
                     stdout=worker_output,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
@@ -489,9 +504,13 @@ def run_contract() -> dict[str, Any]:
                     "retryable_5xx_status": retry_final["status"],
                 }
             except Exception as error:
+                sink_output.flush()
                 worker_output.flush()
+                sink_tail = sink_log.read_text(encoding="utf-8", errors="replace")[-3000:]
                 tail = worker_log.read_text(encoding="utf-8", errors="replace")[-6000:]
-                raise FlowError(f"{error}\nworker log tail:\n{tail}") from error
+                raise FlowError(
+                    f"{error}\nsink log tail:\n{sink_tail}\nworker log tail:\n{tail}"
+                ) from error
             finally:
                 stop_process(worker)
                 stop_process(sink)

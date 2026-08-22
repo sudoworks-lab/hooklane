@@ -1,0 +1,21 @@
+# CI execution/control-plane ownership. Enforcement requires the main-branch
+# repository ruleset documented in docs/CI_TRUST_MODEL.md.
+/.github/CODEOWNERS @sudoworks-lab
+/.github/workflows/** @sudoworks-lab
+/Makefile @sudoworks-lab
+/scripts/** @sudoworks-lab
+/tests/unit/test_ci_toolchain_contract.py @sudoworks-lab
+/tests/unit/test_local_image_tag_contract.py @sudoworks-lab
+/.python-version @sudoworks-lab
+/pyproject.toml @sudoworks-lab
+/requirements.lock @sudoworks-lab
+/cloudflare/.nvmrc @sudoworks-lab
+/cloudflare/.python-version @sudoworks-lab
+/cloudflare/package.json @sudoworks-lab
+/cloudflare/package-lock.json @sudoworks-lab
+/cloudflare/pyproject.toml @sudoworks-lab
+/cloudflare/uv.lock @sudoworks-lab
+/cloudflare/uv-bootstrap.lock @sudoworks-lab
+/cloudflare/harness-requirements.lock @sudoworks-lab
+/cloudflare/pylock.toml @sudoworks-lab
+/cloudflare/wrangler.jsonc @sudoworks-lab

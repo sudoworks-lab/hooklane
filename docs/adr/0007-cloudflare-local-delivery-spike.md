@@ -22,6 +22,7 @@ Cloudflare Workers、D1、Queuesへ同じcontractを写像する場合、D1 tran
 - consumerはdownstream HTTP 2xxだけをsuccessとし、429、5xx、timeout、connection failureをbounded retry、3xxとその他4xxをdead-letterにする。downstream success後、D1 delivered transitionまたはQueue completion前に失敗した場合は同一`event_id`を再配送し得る。
 - delivery destinationはoperator-controlledな固定mock sink bindingだけとし、requestから指定させない。
 - local debug signalは`event_id`、state transition、attempt、content-free reason codeに限定する。payload、raw idempotency key、credential、unsafe exception textは出力しない。
+- pull request／mainでは専用Cloudflare CI jobが`make cloudflare-check`をrequired gateとして実行する。Node、uv、root Python harness、Cloudflare Pythonを既存Redis CI bootstrapと分離し、kind E2EはRedis/Kubernetes qualityとCloudflareの両preflight成功後に開始する。
 
 ## Rejected for this spike
 
@@ -35,3 +36,4 @@ Cloudflare Workers、D1、Queuesへ同じcontractを写像する場合、D1 tran
 - D1 single-database throughput、query-per-invocation／database size、Workers request／memory、Queue ordering、actual Cloudflare telemetry、cloud resource configuration、billing、production trafficはこのlocal spikeでは保証しない。
 - production候補に進めるには、local failure evidenceに加えてremote-free configuration review、supported payload maximum、stale outbox alert、DLQ recovery／D1 reconciliation、Cloudflare-native telemetry、SLO、security/access boundaryを別gateで決定する。
 - Redis backendとのprimitive、DLQ、observability、operational trade-offは[比較資料](../REDIS_CLOUDFLARE_COMPARISON.md)へ固定する。
+- source-only clean-roomとlocal CI contractは検証対象に含めるが、remote GitHub Actions成功、cloud deployment、production trafficの証拠には扱わない。

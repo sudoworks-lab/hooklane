@@ -101,6 +101,17 @@ make cluster-down
 
 `make deploy`はlocal image buildとkind loadを使い、external registryへpushしない。`make e2e-kind`は正常配送、idempotency、retry、pending recovery、status参照、cleanupをまとめて確認する。
 
+## Cloudflare local backend
+
+[`cloudflare/`](cloudflare/README.md)には、既存Redis backendを変更せず、同じ外部contractをPython Worker、D1、Queuesへ写像したlocal-only backendを分離している。D1 transactionを202 acceptance boundaryとし、Queue sendとのgapはrepair可能なoutbox、delivery token／lease、terminal stateのcompare-and-setで扱う。詳しいfailure semanticsとRedisとの差は[Cloudflare設計](docs/CLOUDFLARE_SPIKE.md)と[Redis／Cloudflare比較](docs/REDIS_CLOUDFLARE_COMPARISON.md)を参照する。
+
+```bash
+make cloudflare-check
+make cloudflare-clean-room
+```
+
+`make cloudflare-check`はCloudflare tests、Ruff、strict mypy、temporary D1／Queuesとrepository内mock sinkを使う実local flowを実行する。`make cloudflare-clean-room`はsource-only copyと隔離HOMEを作り、uv、root Python harness、Cloudflare Python 3.13環境をversion contractからbootstrapして同じgateを再現する。Cloudflare account、credential、remote resource、deployment、本番trafficは使わず、production-readyとは主張しない。
+
 ## AWS Terraform foundation
 
 [`infra`](infra/README.md)は、VPC、private ECS Fargate API／worker／controlled mock sink、ALB、ECR、ElastiCache、CloudWatch Logs、Secrets Manager、IAM、remote state、rollback、destroy手順を定義する。source commit `123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b` に対するAWS revalidation evidenceはimmutable image tag `git-123c00c93125b62c0d2bb6b31afd57d6bc5d4a8b`を使用し、main runのsource_run_idは`20260802T154822Z`、cleanup recovery/canonical reconstruction runのcleanup_recovery_run_idは`20260802T160316Z`、verdictは`PASS_AND_CLEAN`である。foundation 49/0/0、runtime 0/3/0、cleanup 0/0/49、smoke 4/4を確認した。image proofはAPI/workerが`configuration_backed`、mock-sinkが`direct_plan`。final state 6、charge-heavy 0、ECR repository 3、ECS service/task 0、INACTIVE tombstone、apply process terminatedである。詳細は[sanitized AWS evidence](docs/aws/runtime-evidence.json)を参照する。
@@ -162,15 +173,18 @@ make clean-room
 
 ## GitHub Actions
 
-[ci.yml](.github/workflows/ci.yml)はpull requestとmainで`make verify`を実行し、その成功後に`make e2e-kind`を実行する。PR #1のPR HEADに対するHosted CI Run #9はsuccessであり、PR #1はmerge commitでmainへmerge済みである。merge commit固有のpush-triggered CI結果はtracked evidence上で独立確認済みとは扱わない。成功時のfailure diagnostics uploadはskipとなる。詳細な履歴は[検証根拠](docs/RELEASE_EVIDENCE.md)を参照する。
+[ci.yml](.github/workflows/ci.yml)はpull requestとmainでRedis/Kubernetesの`quality`とCloudflare local backendの`cloudflare`を独立gateとして実行し、両方の成功後に`e2e-kind`を実行する。Cloudflare jobは`make cloudflare-check`を直接呼び、専用のminimal bootstrapだけを使う。PR #1のPR HEADに対するHosted CI Run #9は既存quality／kind構成でsuccessだったが、今回追加したCloudflare jobのremote runはpush前のため未確認である。詳細な履歴は[検証根拠](docs/RELEASE_EVIDENCE.md)を参照する。
 
-workflowはread-only permission、full commit SHAで固定したaction、secretを要求しないtriggerを使う。Hosted CIの成功はcloud productionや本番trafficの実績を意味しない。
+workflowはread-only permission、approved revisionのexact commit SHAへ固定したaction、secretを要求しないtriggerを使う。PRではcheckout対象のmerge commit `GITHUB_SHA`をimage tagに使い、PR head SHAとbuild contentを混同しない。
+
+[CI trust model](docs/CI_TRUST_MODEL.md)は、repository-local structural contractをaccidental weakening向けdefense-in-depth、base branchのCODEOWNERSとactiveなGitHub rulesetをexternal review boundaryとして分離する。CODEOWNERS fileは追加済みだが、GitHub SettingsのCode Owner enforcement、required checks、ruleset active stateはこのlocal runでは未変更・未確認である。Hosted CIの成功はcloud productionや本番trafficの実績を意味しない。
 
 ## 詳細文書
 
 - [アーキテクチャ](docs/ARCHITECTURE.md)
 - [運用とRunbook一覧](docs/OPERATIONS.md)
 - [security boundary](docs/SECURITY.md)
+- [CI trust model](docs/CI_TRUST_MODEL.md)
 - [制約](docs/LIMITATIONS.md)
 - [SLI / SLO設計目標](docs/SLO.md)
 - [再現手順](docs/DEMO.md)
@@ -180,6 +194,10 @@ workflowはread-only permission、full commit SHAで固定したaction、secret�
 - [ADR](docs/adr/0001-redis-streams-at-least-once.md)
 - [AWS scope extension ADR](docs/adr/0005-aws-scope-extension.md)
 - [Python language selection ADR](docs/adr/0006-language-selection-python.md)
+- [Cloudflare local backend](cloudflare/README.md)
+- [Cloudflare architectureとfailure semantics](docs/CLOUDFLARE_SPIKE.md)
+- [Redis／Cloudflare比較](docs/REDIS_CLOUDFLARE_COMPARISON.md)
+- [Cloudflare分離ADR](docs/adr/0007-cloudflare-local-delivery-spike.md)
 
 ## cleanup
 

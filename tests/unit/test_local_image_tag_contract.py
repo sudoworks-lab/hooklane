@@ -88,11 +88,9 @@ def test_build_scan_contract_and_verify_use_one_explicit_tag() -> None:
 
 def test_ci_uses_commit_tag_and_does_not_fallback_to_release_tag() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert workflow.count("Determine immutable source image identity") == 2
-    assert 'PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}' in workflow
-    assert 'if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then' in workflow
-    assert 'SOURCE_SHA="$PR_HEAD_SHA"' in workflow
-    assert 'SOURCE_SHA="$GITHUB_SHA"' in workflow
+    assert workflow.count("Determine checked-out source image identity") == 2
+    assert "pull_request.head.sha" not in workflow
+    assert workflow.count('SOURCE_SHA="$GITHUB_SHA"') == 2
     assert '[[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]' in workflow
     assert 'IMAGE_TAG="git-$SOURCE_SHA"' in workflow
     assert 'IMAGE_TAG="git-$GITHUB_SHA"' not in workflow
