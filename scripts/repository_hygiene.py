@@ -1,4 +1,4 @@
-"""Audit tracked repository hygiene without reading secret-bearing files."""
+"""Audit repository hygiene without reading secret-bearing files."""
 
 from __future__ import annotations
 
@@ -97,6 +97,16 @@ def tracked_files() -> tuple[Path, ...]:
     )
 
 
+def commit_candidate_files() -> tuple[Path, ...]:
+    return tuple(
+        Path(name)
+        for name in git_output(
+            "ls-files", "--cached", "--others", "--exclude-standard", "-z"
+        ).split("\0")
+        if name
+    )
+
+
 def validate_tracked_paths(files: tuple[Path, ...]) -> None:
     for path in files:
         lowered = path.name.lower()
@@ -131,10 +141,12 @@ def validate_public_text(files: tuple[Path, ...]) -> None:
         re.IGNORECASE,
     )
     placeholder_remote = re.compile(
-        r"github\.com/(?:"
-        r"example|your[-_]?org|owner"
-        r")/|OWNER"
-        r"/REPO|YOUR[-_](?:ORG|REPO)",
+        r"(?<![A-Za-z0-9_-])(?:"
+        r"YOUR[-_](?:ORG|REPO)(?![A-Za-z0-9_-])"
+        r"|OWNER"
+        r"/REPO(?![A-Za-z0-9_-])"
+        r"|(?<![A-Za-z0-9._-])github\.com/(?:example|your[-_]?org|owner)/"
+        r")",
         re.IGNORECASE,
     )
 
@@ -159,9 +171,8 @@ def validate_public_text(files: tuple[Path, ...]) -> None:
         ):
             fail(f"public source depends on excluded STATUS ledger: {relative_path.as_posix()}")
 
-    tracked = set(files)
     for relative_path in LATEST_SURFACES:
-        if relative_path not in tracked:
+        if relative_path not in files:
             continue
         text = (ROOT / relative_path).read_text(encoding="utf-8")
         if re.search(r":latest\b", text):
@@ -324,15 +335,16 @@ def validate_clean_worktree(*, require_clean: bool) -> None:
 
 
 def run_checks(*, require_complete: bool, require_clean: bool) -> None:
-    files = tracked_files()
-    validate_tracked_paths(files)
-    validate_public_text(files)
-    validate_readme_release_state(files)
+    tracked = tracked_files()
+    candidates = commit_candidate_files()
+    validate_tracked_paths(tracked)
+    validate_public_text(candidates)
+    validate_readme_release_state(tracked)
     validate_feature_state(require_complete=require_complete)
     validate_clean_worktree(require_clean=require_clean)
     print(
-        "[ok] tracked secret/cache/history/log filenames, personal paths, email, "
-        "debug markers, unresolved markers, image tags, and release metadata passed"
+        "[ok] tracked path policy and public commit candidates passed secret/cache/history/log "
+        "filename, personal path, email, debug marker, unresolved marker, and image tag checks"
     )
     print("[ok] MIT license, source-only distribution, release evidence, and third-party notices passed")
 
